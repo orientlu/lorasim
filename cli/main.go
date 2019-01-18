@@ -346,8 +346,10 @@ func run() {
 		if err != nil {
 			log.Printf("couldn't send uplink: %s\n", err)
 		}
+		
+		device.UlFcnt ++
 
-		time.Sleep(time.Duration(config.DefaultData.Interval) * time.Second)
+		time.Sleep(time.Duration(config.DefaultData.Interval) * time.Millisecond)
 
 	}
 
