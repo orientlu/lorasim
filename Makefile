@@ -1,3 +1,5 @@
+loracli:
+	go build -o loracli cli/main.go
 all:
 	go build -o gui
 
