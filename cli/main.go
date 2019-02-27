@@ -5,10 +5,12 @@ import (
 	"math/rand"
 
 	"github.com/golang/protobuf/ptypes"
-	"github.com/iegomez/lds/lds"
+	"github.com/madjack101/lds/lds"
 
 	"flag"
 	"time"
+	"net"
+	"os"
 
 	"github.com/BurntSushi/toml"
 	"github.com/brocaar/loraserver/api/gw"
@@ -27,6 +29,36 @@ type mqtt struct {
 
 type gateway struct {
 	MAC string `toml:"mac"`
+}
+
+type udp struct {
+	Server string `toml:"server"`
+	Conn *net.UDPConn
+}
+
+func(u *udp) init(server string) {
+	addr, err := net.ResolveUDPAddr("udp", server)
+	if err != nil {
+		log.Printf("Can't resolve address: ", err)
+		os.Exit(1)
+	}
+
+	u.Conn, err = net.DialUDP("udp", nil, addr)
+	if err != nil {
+		log.Println("Can't dial: ", err)
+		os.Exit(1)
+	}
+
+	go func(u *udp) {
+		for {
+			data := make([]byte, 1024)
+			_, err = u.Conn.Read(data)
+
+			if err != nil {
+				log.Println("failed to read UDP msg because of ", err)
+			}
+		}
+	}(u)
 }
 
 type band struct {
@@ -66,6 +98,7 @@ type rxInfo struct {
 
 type tomlConfig struct {
 	MQTT        mqtt        `toml:"mqtt"`
+	UDP         udp         `toml:"udp"`
 	Band        band        `toml:"band"`
 	Device      device      `timl:"device"`
 	GW          gateway     `toml:"gateway"`
@@ -154,18 +187,27 @@ func main() {
 }
 
 func run() {
+	var client MQTT.Client
+	udpflag := false
+	gwmphead := lds.GenGWMP(config.GW.MAC)
 
-	//Connect to the broker
-	opts := MQTT.NewClientOptions()
-	opts.AddBroker(config.MQTT.Server)
-	opts.SetUsername(config.MQTT.User)
-	opts.SetPassword(config.MQTT.Password)
+	if config.UDP.Server != "" {
+		config.UDP.init(config.UDP.Server)
+		log.Printf("%s", config.UDP.Server)
+		udpflag = true
+	} else {
+		//Connect to the broker
+		opts := MQTT.NewClientOptions()
+		opts.AddBroker(config.MQTT.Server)
+		opts.SetUsername(config.MQTT.User)
+		opts.SetPassword(config.MQTT.Password)
 
-	client := MQTT.NewClient(opts)
+		client = MQTT.NewClient(opts)
 
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		log.Println("Connection error")
-		log.Println(token.Error())
+		if token := client.Connect(); token.Wait() && token.Error() != nil {
+			log.Println("Connection error")
+			log.Println(token.Error())
+		}
 	}
 
 	log.Println("Connection established.")
@@ -342,9 +384,21 @@ func run() {
 		}
 
 		//Now send an uplink
-		err = device.Uplink(client, mType, 1, &urx, &utx, payload, config.GW.MAC, config.Band.Name, *dataRate)
+		msg, err := device.UplinkMessage(mType, 1, &urx, &utx, payload, config.GW.MAC, config.Band.Name, *dataRate)
 		if err != nil {
 			log.Printf("couldn't send uplink: %s\n", err)
+		}
+		
+
+		if udpflag {
+			// send by udp
+			msg = append(gwmphead[:], msg[:]...)
+			log.Printf("msg: % x\n", msg)
+			_, err = config.UDP.Conn.Write(msg)
+			if err != nil {
+				log.Println("failed:", err)
+				os.Exit(1)
+			}
 		}
 		
 		device.UlFcnt ++
