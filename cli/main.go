@@ -9,8 +9,6 @@ import (
 
 	"flag"
 	"time"
-	"net"
-	"os"
 
 	"github.com/BurntSushi/toml"
 	"github.com/brocaar/loraserver/api/gw"
@@ -29,36 +27,6 @@ type mqtt struct {
 
 type gateway struct {
 	MAC string `toml:"mac"`
-}
-
-type udp struct {
-	Server string `toml:"server"`
-	Conn *net.UDPConn
-}
-
-func(u *udp) init(server string) {
-	addr, err := net.ResolveUDPAddr("udp", server)
-	if err != nil {
-		log.Printf("Can't resolve address: ", err)
-		os.Exit(1)
-	}
-
-	u.Conn, err = net.DialUDP("udp", nil, addr)
-	if err != nil {
-		log.Println("Can't dial: ", err)
-		os.Exit(1)
-	}
-
-	go func(u *udp) {
-		for {
-			data := make([]byte, 1024)
-			_, err = u.Conn.Read(data)
-
-			if err != nil {
-				log.Println("failed to read UDP msg because of ", err)
-			}
-		}
-	}(u)
 }
 
 type band struct {
@@ -183,31 +151,22 @@ func main() {
 	confFile = flag.String("conf", "conf.toml", "path to toml configuration file")
 	flag.Parse()
 	importConf()
-	run()
+	RunUdp(config)
 }
 
 func run() {
-	var client MQTT.Client
-	udpflag := false
-	gwmphead := lds.GenGWMP(config.GW.MAC)
 
-	if config.UDP.Server != "" {
-		config.UDP.init(config.UDP.Server)
-		log.Printf("%s", config.UDP.Server)
-		udpflag = true
-	} else {
-		//Connect to the broker
-		opts := MQTT.NewClientOptions()
-		opts.AddBroker(config.MQTT.Server)
-		opts.SetUsername(config.MQTT.User)
-		opts.SetPassword(config.MQTT.Password)
+	//Connect to the broker
+	opts := MQTT.NewClientOptions()
+	opts.AddBroker(config.MQTT.Server)
+	opts.SetUsername(config.MQTT.User)
+	opts.SetPassword(config.MQTT.Password)
 
-		client = MQTT.NewClient(opts)
+	client := MQTT.NewClient(opts)
 
-		if token := client.Connect(); token.Wait() && token.Error() != nil {
-			log.Println("Connection error")
-			log.Println(token.Error())
-		}
+	if token := client.Connect(); token.Wait() && token.Error() != nil {
+		log.Println("Connection error")
+		log.Println(token.Error())
 	}
 
 	log.Println("Connection established.")
@@ -331,7 +290,6 @@ func run() {
 			RfChain:   config.RXInfo.RfChain,
 			Rssi:      config.RXInfo.RfChain,
 			Size:      len(payload),
-			Time:      time.Now().Format(time.RFC3339),
 			Timestamp: int32(time.Now().UnixNano() / 1000000000),
 		}
 
@@ -388,20 +346,10 @@ func run() {
 		if err != nil {
 			log.Printf("couldn't send uplink: %s\n", err)
 		}
-		
 
-		if udpflag {
-			// send by udp
-			msg = append(gwmphead[:], msg[:]...)
-			log.Printf("msg: % x\n", msg)
-			_, err = config.UDP.Conn.Write(msg)
-			if err != nil {
-				log.Println("failed:", err)
-				os.Exit(1)
-			}
-		}
-		
-		device.UlFcnt ++
+		log.Printf("%v\n", msg)
+
+		device.UlFcnt++
 
 		time.Sleep(time.Duration(config.DefaultData.Interval) * time.Millisecond)
 
