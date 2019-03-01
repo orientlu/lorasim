@@ -1,10 +1,13 @@
 package lds
 
 import (
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
+
+	"encoding/hex"
+	"encoding/json"
+	"math/rand"
 
 	"github.com/brocaar/loraserver/api/gw"
 	"github.com/brocaar/lorawan"
@@ -25,11 +28,37 @@ type GwmpRxpk struct {
 	RfChain    int     `json:"rfch"`
 	Rssi       int     `json:"rssi"`
 	Size       int     `json:"size"`
-	Timestamp  int32   `json:"tmst"`
+	Tmst       uint32  `json:"tmst"`
 }
 
 type GwmpRxpkWrapper struct {
 	Rxpk []GwmpRxpk `json:"rxpk"`
+}
+
+type GwStat struct {
+	Time string  `json:time`
+	Rxnb int     `json:rxnb`
+	Rxok int     `json:rxok`
+	Rxfw int     `json:rxfw`
+	Ackr float32 `json:ackr`
+	Dwnb int     `json:dwnb`
+	Txnb int     `json:txnb`
+	Cpur float32 `json:cpur`
+	Memr float32 `json:memr`
+}
+
+type GwStatWrapper struct {
+	Stat GwStat `json:"stat"`
+}
+
+func InitGWMP() {
+	rand.Seed(int64(time.Now().UnixNano()))
+}
+
+func genToken() []byte {
+	token := make([]byte, 2)
+	rand.Read(token)
+	return token
 }
 
 func GenGWMP(gweui string) [12]byte {
@@ -38,14 +67,58 @@ func GenGWMP(gweui string) [12]byte {
 		log.Printf("error gweui %s\n", gweui)
 		gweui = "60c5a8fffe6f7473"
 	}
-	head, _ := hex.DecodeString("024da800")
+
+	head, _ := (hex.DecodeString("02000000"))
 	gweuibytes, _ := hex.DecodeString(gweui)
 
 	copy(ret[:], head)
+	copy(ret[1:], genToken())
 	copy(ret[4:], gweuibytes)
 
 	return ret
 
+}
+
+var gwstat = GwStatWrapper{
+	Stat: GwStat{
+		Time: "",
+		Rxnb: 0,
+		Rxok: 0,
+		Rxfw: 0,
+		Ackr: 100.0,
+		Dwnb: 0,
+		Txnb: 0,
+		Cpur: 0.0,
+		Memr: 0.0,
+	},
+}
+
+var GwEUI string
+
+func GwStatPacket() []byte {
+	gwstat.Stat.Time = time.Now().UTC().Format("2006-01-02 15:04:05 UTC")
+
+	gwmphead := GenGWMP(GwEUI)
+
+	msg, err := json.Marshal(gwstat)
+	if err != nil {
+		log.Printf("couldn't marshal msg: %s\n", err)
+		return nil
+	}
+
+	msg = append(gwmphead[:], msg[:]...)
+
+	return msg
+
+}
+
+func GenGWKeepalived() []byte {
+	head, _ := hex.DecodeString("022da802")
+	gweuibytes, _ := hex.DecodeString(GwEUI)
+
+	msg := append(head[:], gweuibytes[:]...)
+
+	return msg
 }
 
 //Uplink sends an uplink message as if it was sent from a lora-gateway-bridge. Works only for ABP devices with relaxed frame counter.

@@ -151,6 +151,7 @@ func main() {
 	confFile = flag.String("conf", "conf.toml", "path to toml configuration file")
 	flag.Parse()
 	importConf()
+	lds.GwEUI = config.GW.MAC
 	RunUdp(config)
 }
 
