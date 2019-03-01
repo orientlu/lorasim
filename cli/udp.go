@@ -6,7 +6,10 @@ import (
 	"os"
 	"sync"
 
+	b64 "encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+
 	"math/rand"
 
 	"github.com/madjack101/lds/lds"
@@ -52,6 +55,11 @@ func (u *udp) init(server string) {
 	}
 
 	go func(u *udp) {
+		appSKey, err := lds.HexToKey(config.Device.AppSKey)
+		if err != nil {
+			log.Printf("appskey error: %s", err)
+		}
+
 		gweuibytes, _ := hex.DecodeString(config.GW.MAC)
 		for {
 			data := make([]byte, 1024)
@@ -63,15 +71,41 @@ func (u *udp) init(server string) {
 			}
 
 			if len > 0 {
-				log.Printf("downlink message: % x", data[:len])
+				plen := len
+				if plen > 4 {
+					plen = 4
+				}
+
+				log.Printf("downlink message head: % x", data[:plen])
 			}
 
 			if len > 12 && data[3] == '\x03' {
-				log.Printf("downlink paylad: %v\n", string(data[4:]))
+				var js map[string]interface{}
+
+				if err := json.Unmarshal(data[4:len], &js); err != nil {
+					log.Printf("json parse error: %s\n", err.Error())
+					continue
+				}
+
+				payloadb64 := js["txpk"].(map[string]interface{})["data"].(string)
+
+				phy := lorawan.PHYPayload{}
+				_ = phy.UnmarshalText([]byte(payloadb64))
+				phy.DecryptFRMPayload(appSKey)
+
+				phystr, _ := json.Marshal(phy)
+				log.Printf("downlink phypayload: %s\n", phystr)
+
+				b, _ := b64.StdEncoding.DecodeString(payloadb64)
+				js["txpk"].(map[string]interface{})["data"] = fmt.Sprintf("% x", b)
+
+				newpayload, _ := json.Marshal(js)
+				log.Printf("downlink macpayload: %s\n", newpayload)
+
 				reply := append(data[0:4], gweuibytes...)
 				reply[3] = '\x05'
 				u.Send(reply)
-				log.Printf("downlink replay: % x\n", reply)
+				log.Printf("downlink reply: % x\n", reply)
 			}
 
 		}
@@ -235,7 +269,7 @@ func RunUdp(config *tomlConfig) {
 			Frequency: float32(config.RXInfo.Frequency) / 1000000.0,
 			LoRaSNR:   float32(config.RXInfo.LoRaSNR),
 			RfChain:   config.RXInfo.RfChain,
-			Rssi:      config.RXInfo.RfChain,
+			Rssi:      config.RXInfo.Rssi,
 			Size:      len(payload),
 			Tmst:      uint32(time.Now().UnixNano() / 1000),
 		}
@@ -279,7 +313,7 @@ func RunUdp(config *tomlConfig) {
 			break
 		}
 
-		log.Printf("Marshaled message: %v\n", string(msg))
+		log.Printf("Upload message: %v\n", string(msg))
 
 		// send by udp
 		gwmphead := lds.GenGWMP(config.GW.MAC)

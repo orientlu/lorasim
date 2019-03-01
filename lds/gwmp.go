@@ -133,7 +133,7 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8, rxInfo *Gwm
 			FHDR: lorawan.FHDR{
 				DevAddr: d.DevAddr,
 				FCtrl: lorawan.FCtrl{
-					ADR:       false,
+					ADR:       true,
 					ADRACKReq: false,
 					ACK:       false,
 				},
@@ -220,7 +220,7 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8, rxInfo *Gwm
 		}
 	}
 
-	log.Printf("phycal payload hex: % x\n", phyBytes)
+	log.Printf("Upload phy payload hex: % x\n", phyBytes)
 
 	rxInfo.PhyPayload = phyBytes
 
