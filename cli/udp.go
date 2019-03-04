@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 
 	b64 "encoding/base64"
@@ -20,6 +21,11 @@ import (
 	"github.com/brocaar/lorawan"
 
 	log "github.com/sirupsen/logrus"
+)
+
+var (
+	conf *tomlConfig
+	dev  *lds.Device
 )
 
 type udp struct {
@@ -102,10 +108,28 @@ func (u *udp) init(server string) {
 				newpayload, _ := json.Marshal(js)
 				log.Printf("downlink macpayload: %s\n", newpayload)
 
+				//handle maccommand
+				macPL, ok := phy.MACPayload.(*lorawan.MACPayload)
+				if !ok {
+					log.Printf("lorawan: MACPayload must be of type *MACPayload\n")
+					continue
+				}
+
+				//answer reply
 				reply := append(data[0:4], gweuibytes...)
 				reply[3] = '\x05'
 				u.Send(reply)
 				log.Printf("downlink reply: % x\n", reply)
+
+				if macPL.FPort != nil && *macPL.FPort == 0 && strings.Contains(string(phystr), "LinkADRReq") {
+					// u.Send
+					rephy := []byte{'\x03', '\x00'}
+					msg, _ := genPacketBytes(conf, dev, rephy, 0)
+					msg[3] = '\x05'
+					log.Printf("LinkAdrReq: %s", msg[12:])
+					// u.Send(msg)
+				}
+
 			}
 
 		}
@@ -136,6 +160,65 @@ func (u *udp) init(server string) {
 		}
 
 	}(u)
+
+}
+
+func genPacketBytes(config *tomlConfig, d *lds.Device, payload []byte, fport uint8) ([]byte, error) {
+	dataRate := &lds.DataRate{
+		Bandwidth:    config.DR.Bandwith,
+		Modulation:   "LORA",
+		SpreadFactor: config.DR.SpreadFactor,
+		BitRate:      config.DR.BitRate,
+	}
+
+	dataRateStr := fmt.Sprintf("SF%dBW%d", dataRate.SpreadFactor, dataRate.Bandwidth)
+
+	rxInfo := &lds.GwmpRxpk{
+		Channel:   config.RXInfo.Channel,
+		CodeRate:  config.RXInfo.CodeRate,
+		CrcStatus: config.RXInfo.CrcStatus,
+		DataRate:  dataRateStr,
+		Modu:      dataRate.Modulation,
+		Frequency: float32(config.RXInfo.Frequency) / 1000000.0,
+		LoRaSNR:   float32(config.RXInfo.LoRaSNR),
+		RfChain:   config.RXInfo.RfChain,
+		Rssi:      config.RXInfo.Rssi,
+		Size:      len(payload),
+		Tmst:      uint32(time.Now().UnixNano() / 1000),
+	}
+
+	// now := time.Now()
+	// rxTime := ptypes.TimestampNow()
+	// tsge := 	ptypes.DurationProto(now.Sub(time.Time{}))
+
+	lmi := &gw.LoRaModulationInfo{
+		Bandwidth:       uint32(dataRate.Bandwidth),
+		SpreadingFactor: uint32(dataRate.SpreadFactor),
+		CodeRate:        rxInfo.CodeRate,
+	}
+
+	umi := &gw.UplinkTXInfo_LoraModulationInfo{
+		LoraModulationInfo: lmi,
+	}
+
+	utx := gw.UplinkTXInfo{
+		Frequency:      uint32(config.RXInfo.Frequency),
+		ModulationInfo: umi,
+	}
+
+	//////
+	mType := lorawan.UnconfirmedDataUp
+	if config.Device.MType > 0 {
+		mType = lorawan.ConfirmedDataUp
+	}
+
+	//Now send an uplink
+	msg, err := d.UplinkMessageGWMP(mType, fport, rxInfo, &utx, payload, config.GW.MAC, config.Band.Name, *dataRate)
+
+	gwmphead := lds.GenGWMP(config.GW.MAC)
+	msg = append(gwmphead[:], msg[:]...)
+
+	return msg, err
 
 }
 
@@ -217,14 +300,8 @@ func RunUdp(config *tomlConfig) {
 
 	device.SetMarshaler(config.Device.Marshaler)
 
-	dataRate := &lds.DataRate{
-		Bandwidth:    config.DR.Bandwith,
-		Modulation:   "LORA",
-		SpreadFactor: config.DR.SpreadFactor,
-		BitRate:      config.DR.BitRate,
-	}
-
-	dataRateStr := fmt.Sprintf("SF%dBW%d", dataRate.SpreadFactor, dataRate.Bandwidth)
+	conf = config
+	dev = device
 
 	mult := 1
 
@@ -260,74 +337,22 @@ func RunUdp(config *tomlConfig) {
 
 		log.Printf("Bytes: % x\n", payload)
 
-		rxInfo := &lds.GwmpRxpk{
-			Channel:   config.RXInfo.Channel,
-			CodeRate:  config.RXInfo.CodeRate,
-			CrcStatus: config.RXInfo.CrcStatus,
-			DataRate:  dataRateStr,
-			Modu:      dataRate.Modulation,
-			Frequency: float32(config.RXInfo.Frequency) / 1000000.0,
-			LoRaSNR:   float32(config.RXInfo.LoRaSNR),
-			RfChain:   config.RXInfo.RfChain,
-			Rssi:      config.RXInfo.Rssi,
-			Size:      len(payload),
-			Tmst:      uint32(time.Now().UnixNano() / 1000),
-		}
-
-		//////
-
-		// gwID, err := lds.MACToGatewayID(config.GW.MAC)
-		if err != nil {
-			log.Errorf("gw mac error: %s\n", err)
-			return
-		}
 		// now := time.Now()
 		// rxTime := ptypes.TimestampNow()
 		// tsge := 	ptypes.DurationProto(now.Sub(time.Time{}))
 
-		lmi := &gw.LoRaModulationInfo{
-			Bandwidth:       uint32(dataRate.Bandwidth),
-			SpreadingFactor: uint32(dataRate.SpreadFactor),
-			CodeRate:        rxInfo.CodeRate,
-		}
-
-		umi := &gw.UplinkTXInfo_LoraModulationInfo{
-			LoraModulationInfo: lmi,
-		}
-
-		utx := gw.UplinkTXInfo{
-			Frequency:      uint32(rxInfo.Frequency),
-			ModulationInfo: umi,
-		}
-
-		//////
-		mType := lorawan.UnconfirmedDataUp
-		if config.Device.MType > 0 {
-			mType = lorawan.ConfirmedDataUp
-		}
-
-		//Now send an uplink
-		msg, err := device.UplinkMessageGWMP(mType, 1, rxInfo, &utx, payload, config.GW.MAC, config.Band.Name, *dataRate)
+		msg, err := genPacketBytes(config, device, payload, 1)
 		if err != nil {
 			log.Printf("couldn't generate uplink: %s\n", err)
-			break
+			return
 		}
 
 		log.Printf("Upload message: %v\n", string(msg))
 
 		// send by udp
-		gwmphead := lds.GenGWMP(config.GW.MAC)
+		// log.Printf("msg: % x\n", msg)
 
-		msg = append(gwmphead[:], msg[:]...)
-		log.Printf("msg: % x\n", msg)
-
-		config.UDP.Mutex.Lock()
-		_, err = config.UDP.Conn.Write(msg)
-		if err != nil {
-			log.Println("failed:", err)
-			os.Exit(1)
-		}
-		config.UDP.Mutex.Unlock()
+		config.UDP.Send(msg)
 
 		device.UlFcnt++
 

@@ -136,6 +136,7 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8, rxInfo *Gwm
 					ADR:       true,
 					ADRACKReq: false,
 					ACK:       false,
+					ClassB:    false,
 				},
 				FCnt:  d.UlFcnt,
 				FOpts: []lorawan.Payload{}, // you can leave this out when there is no MAC command to send
@@ -200,6 +201,9 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8, rxInfo *Gwm
 			return nil, err
 		}
 
+		rxInfo.Channel = txCh
+		log.Printf("%d, %d\n", txDR, txCh)
+
 		//Now set the MIC.
 		if err := phy.SetUplinkDataMIC(lorawan.LoRaWAN1_1, 0, uint8(txDR), uint8(txCh), d.FNwkSIntKey, d.SNwkSIntKey); err != nil {
 			log.Errorf("set uplink mic error: %s", err)
@@ -212,6 +216,9 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8, rxInfo *Gwm
 		return nil, errors.New("unknown lorawan version")
 	}
 
+	phyjson, _ := json.Marshal(phy)
+	log.Printf("uplink phy: %s\n", phyjson)
+
 	phyBytes, err := phy.MarshalBinary()
 	if err != nil {
 		if err != nil {
@@ -223,6 +230,7 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8, rxInfo *Gwm
 	log.Printf("Upload phy payload hex: % x\n", phyBytes)
 
 	rxInfo.PhyPayload = phyBytes
+	rxInfo.Size = len(phyBytes)
 
 	rx := GwmpRxpkWrapper{}
 	rx.Rxpk = append(rx.Rxpk, *rxInfo)
