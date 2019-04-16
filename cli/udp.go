@@ -62,6 +62,7 @@ func (u *udp) init(server string) {
 
 	go func(u *udp) {
 		appSKey, err := lds.HexToKey(config.Device.AppSKey)
+		nwkSkey, err := lds.HexToKey(config.Device.NwkSEncKey)
 		if err != nil {
 			log.Printf("appskey error: %s", err)
 		}
@@ -69,15 +70,15 @@ func (u *udp) init(server string) {
 		gweuibytes, _ := hex.DecodeString(config.GW.MAC)
 		for {
 			data := make([]byte, 1024)
-			len, err := u.Conn.Read(data)
+			rlen, err := u.Conn.Read(data)
 
 			if err != nil {
 				log.Println("failed to read UDP msg because of ", err)
 				continue
 			}
 
-			if len > 0 {
-				plen := len
+			if rlen > 0 {
+				plen := rlen
 				if plen > 4 {
 					plen = 4
 				}
@@ -85,10 +86,10 @@ func (u *udp) init(server string) {
 				log.Printf("downlink message head: % x", data[:plen])
 			}
 
-			if len > 12 && data[3] == '\x03' {
+			if rlen > 12 && data[3] == '\x03' {
 				var js map[string]interface{}
 
-				if err := json.Unmarshal(data[4:len], &js); err != nil {
+				if err := json.Unmarshal(data[4:rlen], &js); err != nil {
 					log.Printf("json parse error: %s\n", err.Error())
 					continue
 				}
@@ -97,7 +98,25 @@ func (u *udp) init(server string) {
 
 				phy := lorawan.PHYPayload{}
 				_ = phy.UnmarshalText([]byte(payloadb64))
-				phy.DecryptFRMPayload(appSKey)
+
+				if dev.MACVersion == lorawan.LoRaWAN1_1 {
+					phy.DecryptFOpts(nwkSkey)
+				}
+
+				//parse maccommand
+				macPL, ok := phy.MACPayload.(*lorawan.MACPayload)
+				if !ok {
+					log.Printf("lorawan: MACPayload must be of type *MACPayload\n")
+					continue
+				}
+
+				if macPL.FPort != nil && *macPL.FPort == 0 {
+					phy.DecryptFRMPayload(nwkSkey)
+				} else {
+					phy.DecryptFRMPayload(appSKey)
+				}
+
+				// print phy json
 
 				phystr, _ := json.Marshal(phy)
 				log.Printf("downlink phypayload: %s\n", phystr)
@@ -108,26 +127,57 @@ func (u *udp) init(server string) {
 				newpayload, _ := json.Marshal(js)
 				log.Printf("downlink macpayload: %s\n", newpayload)
 
-				//handle maccommand
-				macPL, ok := phy.MACPayload.(*lorawan.MACPayload)
-				if !ok {
-					log.Printf("lorawan: MACPayload must be of type *MACPayload\n")
-					continue
-				}
-
 				//answer reply
 				reply := append(data[0:4], gweuibytes...)
 				reply[3] = '\x05'
 				u.Send(reply)
 				log.Printf("downlink reply: % x\n", reply)
 
-				if macPL.FPort != nil && *macPL.FPort == 0 && strings.Contains(string(phystr), "LinkADRReq") {
+				// replay linkadr request
+				if macPL.FPort != nil && *macPL.FPort == 0 {
+					if strings.Contains(string(phystr), "LinkADRReq") {
+						// u.Send
+						rephy := []byte{'\x03', '\x07', '\x03', '\x07', '\x03', '\x07',
+							'\x03', '\x07', '\x03', '\x07', '\x03', '\x07', '\x06', '\xff', '\x06'}
+						// msg, _ := genPacketBytes(conf, dev, []byte("\x00"), 8, 15, rephy)
+						msg, _ := genPacketBytes(conf, dev, rephy, 0, 0, rephy)
+
+						msg[3] = '\x00'
+						log.Printf("LinkAdrAns: %s", msg[12:])
+						u.Send(msg)
+					} else if strings.Contains(string(phystr), "DevStatusReq") {
+						// u.Send
+						rephy := []byte{'\x06', '\xff', '\x0e'}
+						// msg, _ := genPacketBytes(conf, dev, []byte("\x00"), 8, 15, rephy)
+						msg, _ := genPacketBytes(conf, dev, rephy, 0, 0, nil)
+
+						msg[3] = '\x00'
+						log.Printf("DevStatusAns: %s", msg[12:])
+						u.Send(msg)
+					}
+
+				}
+
+				var foptreply []byte
+				if strings.Contains(string(phystr), "RXParamSetupReq") {
 					// u.Send
-					rephy := []byte{'\x03', '\x00'}
-					msg, _ := genPacketBytes(conf, dev, rephy, 0)
-					msg[3] = '\x05'
-					log.Printf("LinkAdrReq: %s", msg[12:])
-					// u.Send(msg)
+					macAns := lorawan.MACCommand{
+						CID:     lorawan.RXParamSetupAns,
+						Payload: &lorawan.RXParamSetupAnsPayload{true, true, true},
+					}
+					rephy, _ := macAns.MarshalBinary()
+					foptreply = append(foptreply, rephy...)
+				}
+				if strings.Contains(string(phystr), "RXTimingSetupReq") {
+					foptreply = append(foptreply, byte(lorawan.RXTimingSetupAns))
+				}
+
+				if len(foptreply) > 0 {
+					log.Printf("fopt uplink: % x\n", foptreply)
+					msg, _ := genPacketBytes(conf, dev, []byte("\x00"), 8, 15, foptreply)
+					msg[3] = '\x00'
+					log.Printf("MacCommand Ans: %s\n", msg[12:])
+					u.Send(msg)
 				}
 
 			}
@@ -163,7 +213,7 @@ func (u *udp) init(server string) {
 
 }
 
-func genPacketBytes(config *tomlConfig, d *lds.Device, payload []byte, fport uint8) ([]byte, error) {
+func genPacketBytes(config *tomlConfig, d *lds.Device, payload []byte, fport uint8, fOptlen uint8, fOpts []byte) ([]byte, error) {
 	dataRate := &lds.DataRate{
 		Bandwidth:    config.DR.Bandwith,
 		Modulation:   "LORA",
@@ -213,7 +263,7 @@ func genPacketBytes(config *tomlConfig, d *lds.Device, payload []byte, fport uin
 	}
 
 	//Now send an uplink
-	msg, err := d.UplinkMessageGWMP(mType, fport, rxInfo, &utx, payload, config.GW.MAC, config.Band.Name, *dataRate)
+	msg, err := d.UplinkMessageGWMP(mType, fport, rxInfo, &utx, payload, config.GW.MAC, config.Band.Name, *dataRate, fOptlen, fOpts)
 
 	gwmphead := lds.GenGWMP(config.GW.MAC)
 	msg = append(gwmphead[:], msg[:]...)
@@ -341,13 +391,13 @@ func RunUdp(config *tomlConfig) {
 		// rxTime := ptypes.TimestampNow()
 		// tsge := 	ptypes.DurationProto(now.Sub(time.Time{}))
 
-		msg, err := genPacketBytes(config, device, payload, 1)
+		msg, err := genPacketBytes(config, device, payload, 1, 0, nil)
 		if err != nil {
 			log.Printf("couldn't generate uplink: %s\n", err)
 			return
 		}
 
-		log.Printf("Upload message: %v\n", string(msg))
+		log.Printf("Upload message: %v\n", string(msg[12:]))
 
 		// send by udp
 		// log.Printf("msg: % x\n", msg)

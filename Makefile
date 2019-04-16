@@ -1,5 +1,5 @@
 loracli:
-	go build -o loracli cli/main.go
+	go build -o loracli cli/*.go
 all:
 	go build -o gui
 

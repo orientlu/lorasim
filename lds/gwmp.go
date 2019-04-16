@@ -121,29 +121,62 @@ func GenGWKeepalived() []byte {
 	return msg
 }
 
-//Uplink sends an uplink message as if it was sent from a lora-gateway-bridge. Works only for ABP devices with relaxed frame counter.
-func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8, rxInfo *GwmpRxpk, txInfo *gw.UplinkTXInfo, payload []byte, gwMAC string, bandName band.Name, dr DataRate) ([]byte, error) {
+type FoptsPayload struct {
+	bytes []byte
+}
 
-	phy := lorawan.PHYPayload{
-		MHDR: lorawan.MHDR{
-			MType: mType,
-			Major: d.Major,
-		},
-		MACPayload: &lorawan.MACPayload{
-			FHDR: lorawan.FHDR{
-				DevAddr: d.DevAddr,
-				FCtrl: lorawan.FCtrl{
-					ADR:       true,
-					ADRACKReq: false,
-					ACK:       false,
-					ClassB:    false,
-				},
-				FCnt:  d.UlFcnt,
-				FOpts: []lorawan.Payload{}, // you can leave this out when there is no MAC command to send
+//Uplink sends an uplink message as if it was sent from a lora-gateway-bridge. Works only for ABP devices with relaxed frame counter.
+func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8,
+	rxInfo *GwmpRxpk, txInfo *gw.UplinkTXInfo,
+	payload []byte, gwMAC string, bandName band.Name,
+	dr DataRate, fOptlen uint8, fOpts []byte) ([]byte, error) {
+
+	var phy lorawan.PHYPayload
+
+	if fOptlen > 0 {
+		phy = lorawan.PHYPayload{
+			MHDR: lorawan.MHDR{
+				MType: mType,
+				Major: d.Major,
 			},
-			FPort:      &fPort,
-			FRMPayload: []lorawan.Payload{&lorawan.DataPayload{Bytes: payload}},
-		},
+			MACPayload: &lorawan.MACPayload{
+				FHDR: lorawan.FHDR{
+					DevAddr: d.DevAddr,
+					FCtrl: lorawan.FCtrl{
+						ADR:       true,
+						ADRACKReq: false,
+						ACK:       false,
+						ClassB:    false,
+					},
+					FCnt:  d.UlFcnt,
+					FOpts: []lorawan.Payload{&lorawan.DataPayload{Bytes: fOpts}}, // you can leave this out when there is no MAC command to send
+				},
+				FPort:      &fPort,
+				FRMPayload: []lorawan.Payload{&lorawan.DataPayload{Bytes: payload}},
+			},
+		}
+	} else {
+		phy = lorawan.PHYPayload{
+			MHDR: lorawan.MHDR{
+				MType: mType,
+				Major: d.Major,
+			},
+			MACPayload: &lorawan.MACPayload{
+				FHDR: lorawan.FHDR{
+					DevAddr: d.DevAddr,
+					FCtrl: lorawan.FCtrl{
+						ADR:       true,
+						ADRACKReq: false,
+						ACK:       false,
+						ClassB:    false,
+					},
+					FCnt:  d.UlFcnt,
+					FOpts: []lorawan.Payload{}, // you can leave this out when there is no MAC command to send
+				},
+				FPort:      &fPort,
+				FRMPayload: []lorawan.Payload{&lorawan.DataPayload{Bytes: payload}},
+			},
+		}
 	}
 
 	if err := phy.EncryptFRMPayload(d.AppSKey); err != nil {
@@ -202,7 +235,6 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8, rxInfo *Gwm
 		}
 
 		rxInfo.Channel = txCh
-		log.Printf("%d, %d\n", txDR, txCh)
 
 		//Now set the MIC.
 		if err := phy.SetUplinkDataMIC(lorawan.LoRaWAN1_1, 0, uint8(txDR), uint8(txCh), d.FNwkSIntKey, d.SNwkSIntKey); err != nil {
