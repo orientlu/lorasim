@@ -73,7 +73,7 @@ func (u *udp) init(server string) {
 			rlen, err := u.Conn.Read(data)
 
 			if err != nil {
-				log.Println("failed to read UDP msg because of ", err)
+				log.Println("faixled to read UDP msg because of ", err)
 				continue
 			}
 
@@ -361,10 +361,12 @@ func RunUdp(config *tomlConfig) {
 			return
 		}
 		payload := []byte{}
+		fport := 1
 
 		if config.RawPayload.UseRaw {
 			var pErr error
 			payload, pErr = hex.DecodeString(config.RawPayload.Payload)
+			fport = config.RawPayload.Fport
 			if err != nil {
 				log.Errorf("couldn't decode hex payload: %s\n", pErr)
 				return
@@ -391,7 +393,7 @@ func RunUdp(config *tomlConfig) {
 		// rxTime := ptypes.TimestampNow()
 		// tsge := 	ptypes.DurationProto(now.Sub(time.Time{}))
 
-		msg, err := genPacketBytes(config, device, payload, 1, 0, nil)
+		msg, err := genPacketBytes(config, device, payload, uint8(fport), 0, nil)
 		if err != nil {
 			log.Printf("couldn't generate uplink: %s\n", err)
 			return

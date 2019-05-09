@@ -88,6 +88,7 @@ type defaultData struct {
 type rawPayload struct {
 	Payload string `toml:"payload"`
 	UseRaw  bool   `toml:"use_raw"`
+	Fport   int    `toml:"fport"`
 }
 
 var confFile *string

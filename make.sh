@@ -1,1 +1,1 @@
-go build -o lorabench cli/main.go
+go build -o lorabench cli/*.go

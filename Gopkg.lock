@@ -71,6 +71,14 @@
 
 [[projects]]
   branch = "master"
+  digest = "1:b2d5bb28ee2d78d3bd6c7640660afd89d64e85fd6d84e3482ceae8754c60cbf0"
+  name = "github.com/iegomez/lds"
+  packages = ["lds"]
+  pruneopts = "UT"
+  revision = "664b473f46665a211ee56fd8e6ca090129acb8ac"
+
+[[projects]]
+  branch = "master"
   digest = "1:c231cdb133bc5f7267b07770e84ad6a0007bb26e99a97a7d1d6b20dd25913551"
   name = "github.com/jacobsa/crypto"
   packages = [
@@ -141,6 +149,7 @@
     "github.com/golang/protobuf/jsonpb",
     "github.com/golang/protobuf/proto",
     "github.com/golang/protobuf/ptypes",
+    "github.com/iegomez/lds/lds",
     "github.com/sirupsen/logrus",
   ]
   solver-name = "gps-cdcl"

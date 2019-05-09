@@ -8,3 +8,7 @@ requirements:
 
 dev-requirements:
 	go get -u github.com/golang/dep/cmd/dep
+
+clean:
+	rm -f loracli
+
