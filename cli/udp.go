@@ -172,6 +172,20 @@ func (u *udp) init(server string) {
 					foptreply = append(foptreply, byte(lorawan.RXTimingSetupAns))
 				}
 
+				if strings.Contains(string(phystr), "LinkADRReq") {
+					macAns := lorawan.MACCommand{
+						CID:     lorawan.LinkADRAns,
+						Payload: &lorawan.LinkADRAnsPayload{true, true, true},
+					}
+					// trcik, do fake adr
+					macpayload, _ := macPL.FHDR.FOpts[0].(*lorawan.MACCommand)
+					adrpayload, _ := macpayload.Payload.(*lorawan.LinkADRReqPayload)
+					conf.DR.SpreadFactor = 12 - int(adrpayload.DataRate)
+
+					rephy, _ := macAns.MarshalBinary()
+					foptreply = append(foptreply, rephy...)
+				}
+
 				if len(foptreply) > 0 {
 					log.Printf("fopt uplink: % x\n", foptreply)
 					msg, _ := genPacketBytes(conf, dev, []byte("\x00"), 8, 15, foptreply)
