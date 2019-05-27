@@ -13,16 +13,18 @@ mac="1000000000000001"
 [band]
 name="CN_470_510"
 
-[device]
+[[devices]]
 eui="0000000000000001"
 address="00865bd6"
+
+[device_common]
 network_session_encription_key="bc97ea1ff62e7a3490135d989aae6bca"
 serving_network_session_integrity_key="bc97ea1ff62e7a3490135d989aae6bca"
 forwarding_network_session_integrity_key="bc97ea1ff62e7a3490135d989aae6bca"
 application_session_key="bc97ea1ff62e7a3490135d989aae6bca"
 marshaler="json"
 nwk_key="00000000000000010000000000000001"
-app_key="00000000000000010000000000000001"
+app_key="0000000000000010000000000000001"
 major=0
 mac_version=1
 mtype=0

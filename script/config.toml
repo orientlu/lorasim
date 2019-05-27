@@ -43,6 +43,109 @@ ns = "lora-ns"
 profiles_name = "gw-pf-2"
 profiles_channels  = [0,1,2]
 
+[[app.ns.gw]]
+name = "lora-gw-3"
+des = "gw lora-ns"
+id = "1000000000000003"
+ns = "lora-ns"
+profiles_name = "gw-pf-3"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-4"
+des = "gw lora-ns"
+id = "1000000000000004"
+ns = "lora-ns"
+profiles_name = "gw-pf-4"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-5"
+des = "gw lora-ns"
+id = "1000000000000005"
+ns = "lora-ns"
+profiles_name = "gw-pf-5"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-6"
+des = "gw lora-ns"
+id = "1000000000000006"
+ns = "lora-ns"
+profiles_name = "gw-pf-6"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-7"
+des = "gw lora-ns"
+id = "1000000000000007"
+ns = "lora-ns"
+profiles_name = "gw-pf-7"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-8"
+des = "gw lora-ns"
+id = "1000000000000008"
+ns = "lora-ns"
+profiles_name = "gw-pf-8"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-9"
+des = "gw lora-ns"
+id = "1000000000000009"
+ns = "lora-ns"
+profiles_name = "gw-pf-9"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-10"
+des = "gw lora-ns"
+id = "100000000000000a"
+ns = "lora-ns"
+profiles_name = "gw-pf-a"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-11"
+des = "gw lora-ns"
+id = "100000000000000b"
+ns = "lora-ns"
+profiles_name = "gw-pf-b"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-12"
+des = "gw lora-ns"
+id = "100000000000000c"
+ns = "lora-ns"
+profiles_name = "gw-pf-c"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-13"
+des = "gw lora-ns"
+id = "100000000000000d"
+ns = "lora-ns"
+profiles_name = "gw-pf-d"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-14"
+des = "gw lora-ns"
+id = "100000000000000e"
+ns = "lora-ns"
+profiles_name = "gw-pf-e"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-15"
+des = "gw lora-ns"
+id = "100000000000000f"
+ns = "lora-ns"
+profiles_name = "gw-pf-f"
+profiles_channels  = [0,1,2]
 
 ## add single device
 [[app.ns.device]]
@@ -62,13 +165,13 @@ application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
 ## add a device group
 ## max 65535, device id/addr/key suffix will between : 0000 -> FFFF
 [[app.ns.device_group]]
-dev_number = 10
-name_prefix = "dev-00-"
-des = "dev-00-group"
-eui_prefix="100000000000"
-addr_prefix = "0087"
+dev_number = 2
+name_prefix = "dev-01-"
+des = "dev-01-group"
+eui_prefix="100000000001"
+addr_prefix = "0001"
 skip_fcnt = true
-profiles_name = "tt-00"
+profiles_name = "tt-01"
 profiles_mac_version = "1.1.0"
 profiles_reg_version = "A"
 ## key len: 32, set 28, will add suffix
@@ -81,13 +184,13 @@ app_mqtt="tcp://localhost:1883"
 gw_mac = "1000000000000001"
 
 [[app.ns.device_group]]
-dev_number = 1
-name_prefix = "dev-01-"
-des = "dev-01-group"
-eui_prefix="200000000000"
-addr_prefix = "0088"
+dev_number = 2
+name_prefix = "dev-02-"
+des = "dev-02-group"
+eui_prefix="200000000001"
+addr_prefix = "0002"
 skip_fcnt = true
-profiles_name = "tt-01"
+profiles_name = "tt-02"
 profiles_mac_version = "1.1.0"
 profiles_reg_version = "A"
 ## key len: 32, set 28, will add suffix
@@ -98,3 +201,250 @@ application_session_key = "bc97ea1ff62e7a3490135d989aae"
 gateway_bridge_udp = "localhost:1700"
 app_mqtt="tcp://localhost:1883"
 gw_mac = "1000000000000002"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-03-"
+des = "dev-03-group"
+eui_prefix="300000000001"
+addr_prefix = "0003"
+skip_fcnt = true
+profiles_name = "tt-03"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae6bca"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "1000000000000003"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-04-"
+des = "dev-04-group"
+eui_prefix="400000000001"
+addr_prefix = "0004"
+skip_fcnt = true
+profiles_name = "tt-04"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+application_session_key = "bc97ea1ff62e7a3490135d989aae"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "1000000000000004"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-05-"
+des = "dev-05-group"
+eui_prefix="500000000001"
+addr_prefix = "0005"
+skip_fcnt = true
+profiles_name = "tt-05"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae6bca"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "1000000000000005"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-06-"
+des = "dev-06-group"
+eui_prefix="600000000001"
+addr_prefix = "0006"
+skip_fcnt = true
+profiles_name = "tt-06"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+application_session_key = "bc97ea1ff62e7a3490135d989aae"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "1000000000000006"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-07-"
+des = "dev-07-group"
+eui_prefix="700000000001"
+addr_prefix = "0007"
+skip_fcnt = true
+profiles_name = "tt-07"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae6bca"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "1000000000000007"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-08-"
+des = "dev-08-group"
+eui_prefix="800000000001"
+addr_prefix = "0008"
+skip_fcnt = true
+profiles_name = "tt-08"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+application_session_key = "bc97ea1ff62e7a3490135d989aae"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "1000000000000008"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-09-"
+des = "dev-09-group"
+eui_prefix="900000000001"
+addr_prefix = "0009"
+skip_fcnt = true
+profiles_name = "tt-09"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae6bca"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "1000000000000009"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-10-"
+des = "dev-10-group"
+eui_prefix="a00000000001"
+addr_prefix = "000a"
+skip_fcnt = true
+profiles_name = "tt-0a"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+application_session_key = "bc97ea1ff62e7a3490135d989aae"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "100000000000000a"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-11-"
+des = "dev-11-group"
+eui_prefix="b00000000001"
+addr_prefix = "000b"
+skip_fcnt = true
+profiles_name = "tt-0b"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae6bca"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "100000000000000b"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-12-"
+des = "dev-12-group"
+eui_prefix="c00000000001"
+addr_prefix = "000c"
+skip_fcnt = true
+profiles_name = "tt-0c"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+application_session_key = "bc97ea1ff62e7a3490135d989aae"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "100000000000000c"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-13-"
+des = "dev-13-group"
+eui_prefix="d00000000001"
+addr_prefix = "000d"
+skip_fcnt = true
+profiles_name = "tt-0d"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae6bca"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "100000000000000d"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-14-"
+des = "dev-14-group"
+eui_prefix="e00000000001"
+addr_prefix = "000e"
+skip_fcnt = true
+profiles_name = "tt-0e"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+application_session_key = "bc97ea1ff62e7a3490135d989aae"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "100000000000000e"
+
+[[app.ns.device_group]]
+dev_number = 2
+name_prefix = "dev-15-"
+des = "dev-15-group"
+eui_prefix="f00000000001"
+addr_prefix = "000f"
+skip_fcnt = true
+profiles_name = "tt-0f"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae6bca"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "100000000000000f"

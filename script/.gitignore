@@ -1,3 +1,4 @@
 *.pyc
 nohup.out
 *devlist.sh
+*devlist.sh.pid
