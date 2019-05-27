@@ -6,16 +6,15 @@ prepare.py读取配置文件 config.toml，调用 lora_client.py 向指定环境
 
 # 导入节点组
 方便测试，提供成批导入虚拟节点，见配置文件  [[app.ns.device_group]]
-配置导入节点组后，执行导入会生成保存所有节点环境变量文本: {节点组名prefix}-devlist.sh
+实现单个仿真网关带一组节点，单个组设备最大值为 65535
+配置导入节点组后，执行导入后生成节点组绑定gw的配置文件 gw-{gw-eui}-config.toml 供loracli 读取启动对应的仿真 gw
 
 ```bash
-./start_device.sh {节点组名prefix}-devlist.sh
-#启动仿真节点，pid 写入 {节点组名prefix}-devlist.sh.pid
-./stop_device.sh {节点组名prefix}-devlist.sh.pid
-#停止启动的仿真节点
+./start_device.sh
+#启动仿真gw，pid 写入 gw-{gw-eui}-config.toml.pid
+./stop_device.sh
+#停止启动的仿真gw
 ```
-
-
 
 
 ## api test

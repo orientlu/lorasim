@@ -13,9 +13,7 @@ mac="1000000000000001"
 [band]
 name="CN_470_510"
 
-[device]
-eui="0000000000000001"
-address="00865bd6"
+[device_common]
 network_session_encription_key="bc97ea1ff62e7a3490135d989aae6bca"
 serving_network_session_integrity_key="bc97ea1ff62e7a3490135d989aae6bca"
 forwarding_network_session_integrity_key="bc97ea1ff62e7a3490135d989aae6bca"
@@ -48,5 +46,14 @@ use_raw=true
 fport=5
 
 [default_data]
-interval=100
-timeout=30000
+interval=1000
+timeout=10000
+stat_interval=60000
+
+[[devices]]
+eui="0000000000000001"
+address="00865bd6"
+[[devices]]
+eui="0000000000000002"
+address="00865bd7"
+

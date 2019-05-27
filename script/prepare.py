@@ -10,7 +10,8 @@ import struct
 import binascii
 
 CFGFILE = "./config.toml"
-
+DEFAULT_DEVICE_CFGFILE = "../conf.toml"
+default_device_dic = None
 
 def init_conf():
     if not os.path.exists(CFGFILE):
@@ -166,8 +167,12 @@ def setup_devicegroup(client, devConfig, org_id, ns_id, app_id):
         print("---> add dev_pf,", devConfig['profiles_name'], " id: ",
               devConfig['profiles_id'])
 
-    store_device_env = devConfig['name_prefix'] + "devlist.sh"
-    with open(store_device_env,'wt') as f:
+    if default_device_dic is not None:
+        # default_device_dic["devices"].clear()
+        del default_device_dic["devices"][:]
+
+    gen_gw_config = "gw-" + devConfig['gw_mac'] + "-config.toml"
+    with open(gen_gw_config, 'wt') as f:
         # add devices
         for device_index in range(0, devConfig['dev_number']):
             # 1 -> "0001"
@@ -221,25 +226,28 @@ def setup_devicegroup(client, devConfig, org_id, ns_id, app_id):
                 fnsSessionIntKey=fnsSessionIntKey,
                 appKey=appKey)
 
-        # write device env to file, start device sim by other script
-        dev_env = "export " + '''\
-UDP_SERVER={} \
-GATEWAY_MAC={} \
-DEVICE_EUI={} \
-DEVICE_ADDRESS={} \
-DEVICE_NETWORK_SESSION_ENCRIPTION_KEY={} \
-DEVICE_SERVING_NETWORK_SESSION_INTEGRITY_KEY={} \
-DEVICE_FORWARDING_NETWORK_SESSION_INTEGRITY_KEY={} \
-DEVICE_APPLICATION={} \
-DEVICE_APPLICATION_SESSION_KEY={} \
-MQTT_SERVER={}\n'''.format(
-                    devConfig['gateway_bridge_udp'], devConfig['gw_mac'],
-                    devEui, devAddr,
-                    nsSessionEncKey, nsSessionIntKey, fnsSessionIntKey,
-                    app_id, appKey,
-                    devConfig['app_mqtt']
+            if default_device_dic is not None:
+                default_device_dic['devices'].append(
+                    {
+                        'eui': devEui,
+                        'address': devAddr,
+                    }
                 )
-        f.write(dev_env)
+
+        if default_device_dic is not None:
+            default_device_dic['udp']['server'] = devConfig['gateway_bridge_udp']
+            default_device_dic['mqtt']['server'] = devConfig['app_mqtt']
+            default_device_dic['gateway']['mac'] = devConfig['gw_mac']
+            default_device_dic['device_common']['network_session_encription_key'] = nsSessionEncKey
+            default_device_dic['device_common']['serving_network_session_integrity_key'] = nsSessionIntKey
+            default_device_dic['device_common']['forwarding_network_session_integrity_key'] = fnsSessionIntKey
+            default_device_dic['device_common']['application_session_key']
+            default_device_dic['device_common']['app_key'] = appKey
+            default_device_dic['device_common']['app_id'] = app_id
+
+            gw_conf = toml.dumps(default_device_dic)
+            f.write(gw_conf)
+
 
 def setup_app(client, appConfig, org_id):
     print("start setup app")
@@ -267,6 +275,16 @@ def setup_app(client, appConfig, org_id):
         setup_device(client, dev, org_id, ns['id'], appConfig['id'])
 
     # setup devices
+    if not os.path.exists(DEFAULT_DEVICE_CFGFILE):
+        input(DEFAULT_DEVICE_CFGFILE + "not found")
+    else:
+        with open(DEFAULT_DEVICE_CFGFILE, mode='rb') as f:
+            content = f.read()
+        if content.startswith(b'\xef\xbb\xbf'):     # 去掉 utf8 bom 头
+            content = content[3:]
+        global default_device_dic
+        default_device_dic  = toml.loads(content.decode('utf8'))
+
     for dev in ns['device_group']:
         setup_devicegroup(client, dev, org_id, ns['id'], appConfig['id'])
 

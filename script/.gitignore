@@ -1,3 +1,4 @@
 *.pyc
 nohup.out
-*devlist.sh
+gw-*-config.toml
+gw-*-config.toml.pid
