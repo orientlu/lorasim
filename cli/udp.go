@@ -13,13 +13,14 @@ import (
 
 	"math/rand"
 
-	"github.com/madjack101/lds/lds"
+	"git.code.oa.com/orientlu/lorasim/lds"
 
 	"time"
 
 	"github.com/brocaar/loraserver/api/gw"
 	"github.com/brocaar/lorawan"
 
+	MQTT "github.com/eclipse/paho.mqtt.golang"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -29,28 +30,52 @@ var (
 )
 
 type udp struct {
-	Server string `toml:"server"`
+	Server string `mapstructure:"server"`
 	Conn   *net.UDPConn
 	Mutex  *sync.Mutex
+
+	SendTime      map[uint32]time.Time
+	SendTimeMutex *sync.Mutex
+}
+
+// FunMqttHandle ...
+var FunMqttHandle MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
+	var js map[string]interface{}
+	if err := json.Unmarshal(msg.Payload(), &js); err == nil {
+		ackFcnt := (uint32)(js["fCnt"].(float64))
+
+		config.UDP.SendTimeMutex.Lock()
+		defer config.UDP.SendTimeMutex.Unlock()
+		if startTime, ok := conf.UDP.SendTime[ackFcnt]; ok {
+			log.Warningf("msg_elapsed: %d ms\n", time.Now().Sub(startTime)/time.Millisecond)
+			log.Warningf("msg fcnt[%d] elapsed: %s\n", ackFcnt, time.Since(startTime))
+			delete(conf.UDP.SendTime, ackFcnt)
+		} else {
+			log.Errorf("app mqtt msg fnct[%d] can not found", ackFcnt)
+		}
+	} else {
+		log.Errorf("app mqtt msg json unmarshal error %s", err)
+	}
 }
 
 func (u *udp) Send(msg []byte) {
 	u.Mutex.Lock()
+	defer u.Mutex.Unlock()
 	_, err := u.Conn.Write(msg)
-
 	if err != nil {
 		log.Println("udp send failed:", err)
 	}
-
-	u.Mutex.Unlock()
 }
 
 func (u *udp) init(server string) {
 	u.Mutex = &sync.Mutex{}
+	// elapsed cal
+	u.SendTimeMutex = &sync.Mutex{}
+	u.SendTime = make(map[uint32]time.Time)
 
 	addr, err := net.ResolveUDPAddr("udp", server)
 	if err != nil {
-		log.Printf("Can't resolve address: ", err)
+		log.Printf("Can't resolve address: %s", err)
 		os.Exit(1)
 	}
 
@@ -60,6 +85,7 @@ func (u *udp) init(server string) {
 		os.Exit(1)
 	}
 
+	// read udp
 	go func(u *udp) {
 		appSKey, err := lds.HexToKey(config.Device.AppSKey)
 		nwkSkey, err := lds.HexToKey(config.Device.NwkSEncKey)
@@ -68,8 +94,8 @@ func (u *udp) init(server string) {
 		}
 
 		gweuibytes, _ := hex.DecodeString(config.GW.MAC)
+		data := make([]byte, 1024)
 		for {
-			data := make([]byte, 1024)
 			rlen, err := u.Conn.Read(data)
 
 			if err != nil {
@@ -131,7 +157,7 @@ func (u *udp) init(server string) {
 				reply := append(data[0:4], gweuibytes...)
 				reply[3] = '\x05'
 				u.Send(reply)
-				log.Printf("downlink reply: % x\n", reply)
+				log.Printf("Send downlink reply: % x\n", reply)
 
 				// replay linkadr request
 				if macPL.FPort != nil && *macPL.FPort == 0 {
@@ -225,6 +251,22 @@ func (u *udp) init(server string) {
 
 	}(u)
 
+	// find time msg
+	go func(u *udp) {
+		for {
+			time.Sleep(time.Duration(conf.DefaultData.Timeout) * time.Millisecond)
+			go func(u *udp) {
+				u.SendTimeMutex.Lock()
+				defer u.SendTimeMutex.Unlock()
+				for k, v := range u.SendTime {
+					if uint32(time.Now().Sub(v)/time.Millisecond) >= conf.DefaultData.Timeout {
+						log.Warningf("msg_timeout fcnt[%d]", k)
+						delete(u.SendTime, k)
+					}
+				}
+			}(u)
+		}
+	}(u)
 }
 
 func genPacketBytes(config *tomlConfig, d *lds.Device, payload []byte, fport uint8, fOptlen uint8, fOpts []byte) ([]byte, error) {
@@ -282,6 +324,11 @@ func genPacketBytes(config *tomlConfig, d *lds.Device, payload []byte, fport uin
 	gwmphead := lds.GenGWMP(config.GW.MAC)
 	msg = append(gwmphead[:], msg[:]...)
 
+	config.UDP.SendTimeMutex.Lock()
+	config.UDP.SendTime[d.UlFcnt] = time.Now()
+	config.UDP.SendTimeMutex.Unlock()
+	d.UlFcnt++
+
 	return msg, err
 
 }
@@ -289,6 +336,7 @@ func genPacketBytes(config *tomlConfig, d *lds.Device, payload []byte, fport uin
 func RunUdp(config *tomlConfig) {
 	lds.InitGWMP()
 
+	conf = config
 	if config.UDP.Server != "" {
 		config.UDP.init(config.UDP.Server)
 	} else {
@@ -364,7 +412,6 @@ func RunUdp(config *tomlConfig) {
 
 	device.SetMarshaler(config.Device.Marshaler)
 
-	conf = config
 	dev = device
 
 	mult := 1
@@ -401,7 +448,7 @@ func RunUdp(config *tomlConfig) {
 			}
 		}
 
-		log.Printf("Bytes: % x\n", payload)
+		log.Printf("---> Send payload, Bytes: % x\n", payload)
 
 		// now := time.Now()
 		// rxTime := ptypes.TimestampNow()
@@ -413,17 +460,11 @@ func RunUdp(config *tomlConfig) {
 			return
 		}
 
-		log.Printf("Upload message: %v\n", string(msg[12:]))
-
-		// send by udp
-		// log.Printf("msg: % x\n", msg)
+		log.Printf("----> Upload message: %v\n", string(msg[12:]))
 
 		config.UDP.Send(msg)
 
-		device.UlFcnt++
-
 		time.Sleep(time.Duration(config.DefaultData.Interval) * time.Millisecond)
-
 	}
 
 }

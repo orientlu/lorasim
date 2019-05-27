@@ -1,9 +1,8 @@
-!example_conf.toml
-*.toml
 /vendor
 /.vendor*
 cli/cli
-cli/conf.toml
 scroll_test
 *.log
 gui
+lorabench
+loracli

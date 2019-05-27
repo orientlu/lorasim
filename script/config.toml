@@ -1,0 +1,100 @@
+
+# 设置 app server 连接信息
+[server]
+host = "http://127.0.0.1:8080"
+user = "admin"
+passwd = "admin"
+proxy = ""
+#proxy = "http://web-proxy.oa.com:8080"
+
+[mqtt]
+server="tcp://127.0.0.1:1883"
+user=""
+password=""
+
+## 以下，如果制定name不存在，则自动创建
+
+[organizations]
+name = "lora_test"
+display_name = "lora test org"
+
+[[app]]
+name = "test_app"
+des = "test app"
+
+[app.ns]
+name = "lora-ns"
+server = "loraserver:8000"
+profiles_name = "lora-ns-pf"
+
+[[app.ns.gw]]
+name = "lora-gw-1"
+des = "gw lora-ns"
+id = "1000000000000001"
+ns = "lora-ns"
+profiles_name = "gw-pf-1"
+profiles_channels  = [0,1,2]
+
+[[app.ns.gw]]
+name = "lora-gw-2"
+des = "gw lora-ns"
+id = "1000000000000002"
+ns = "lora-ns"
+profiles_name = "gw-pf-2"
+profiles_channels  = [0,1,2]
+
+
+## add single device
+[[app.ns.device]]
+name = "hr-1"
+des = "device hr-1"
+eui = "0000000000000001"
+skip_fcnt = true
+profiles_name = "hr-1-pf"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+addr = "00865bd6"
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae6bca"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
+
+## add a device group
+## max 65535, device id/addr/key suffix will between : 0000 -> FFFF
+[[app.ns.device_group]]
+dev_number = 10
+name_prefix = "dev-00-"
+des = "dev-00-group"
+eui_prefix="100000000000"
+addr_prefix = "0087"
+skip_fcnt = true
+profiles_name = "tt-00"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae6bca"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "1000000000000001"
+
+[[app.ns.device_group]]
+dev_number = 1
+name_prefix = "dev-01-"
+des = "dev-01-group"
+eui_prefix="200000000000"
+addr_prefix = "0088"
+skip_fcnt = true
+profiles_name = "tt-01"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+## key len: 32, set 28, will add suffix
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae"
+application_session_key = "bc97ea1ff62e7a3490135d989aae"
+gateway_bridge_udp = "localhost:1700"
+app_mqtt="tcp://localhost:1883"
+gw_mac = "1000000000000002"

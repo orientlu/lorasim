@@ -1,14 +1,14 @@
 #Configuration.
 [mqtt]
 server="tcp://localhost:1883"
-user="your-user"
-password="your-password"
+user=""
+password=""
 
 [gateway]
-mac="your-gw-mac"
+mac="1122334455667788"
 
 [band]
-name="US_902_928"
+name="EU_863_870"
 
 [device]
 eui="0000000000000001"

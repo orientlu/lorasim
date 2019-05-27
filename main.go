@@ -5,8 +5,8 @@ import (
 	"os"
 	"strconv"
 
+	"git.code.oa.com/orientlu/lorasim/lds"
 	"github.com/golang/protobuf/ptypes"
-	"github.com/iegomez/lds/lds"
 
 	"flag"
 	"fmt"

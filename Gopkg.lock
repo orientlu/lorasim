@@ -149,7 +149,7 @@
     "github.com/golang/protobuf/jsonpb",
     "github.com/golang/protobuf/proto",
     "github.com/golang/protobuf/ptypes",
-    "github.com/iegomez/lds/lds",
+    "git.code.oa.com/orientlu/lorasim/lds",
     "github.com/sirupsen/logrus",
   ]
   solver-name = "gps-cdcl"

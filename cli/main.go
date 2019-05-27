@@ -1,98 +1,100 @@
 package main
 
 import (
-	"encoding/hex"
-	"math/rand"
-
-	"github.com/golang/protobuf/ptypes"
-	"github.com/madjack101/lds/lds"
+	"net/http"
+	_ "net/http/pprof"
 
 	"flag"
+	"fmt"
+	"strings"
 	"time"
 
-	"github.com/BurntSushi/toml"
-	"github.com/brocaar/loraserver/api/gw"
+	"git.code.oa.com/orientlu/lorasim/lds"
+
 	"github.com/brocaar/lorawan"
 	lwband "github.com/brocaar/lorawan/band"
-
 	MQTT "github.com/eclipse/paho.mqtt.golang"
 	log "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 type mqtt struct {
-	Server   string `toml:"server"`
-	User     string `toml:"user"`
-	Password string `toml:"password"`
+	Server   string `mapstructure:"server"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Client   MQTT.Client
 }
 
 type gateway struct {
-	MAC string `toml:"mac"`
+	MAC string `mapstructure:"mac"`
 }
 
 type band struct {
-	Name lwband.Name `toml:"name"`
+	Name lwband.Name `mapstructure:"name"`
 }
 
 type device struct {
-	EUI         string             `toml:"eui"`
-	Address     string             `toml:"address"`
-	NwkSEncKey  string             `toml:"network_session_encription_key"`
-	SNwkSIntKey string             `toml:"serving_network_session_integrity_key"`    //For Lorawan 1.0 this is the same as the NwkSEncKey
-	FNwkSIntKey string             `toml:"forwarding_network_session_integrity_key"` //For Lorawan 1.0 this is the same as the NwkSEncKey
-	AppSKey     string             `toml:"application_session_key"`
-	Marshaler   string             `toml:"marshaler"`
-	NwkKey      string             `toml:"nwk_key"`     //Network key, used to be called application key for Lorawan 1.0
-	AppKey      string             `toml:"app_key"`     //Application key, for Lorawan 1.1
-	Major       lorawan.Major      `toml:"major"`       //Lorawan major version
-	MACVersion  lorawan.MACVersion `toml:"mac_version"` //Lorawan MAC version
-	MType       lorawan.MType      `toml:"mtype"`       //LoRaWAN mtype (ConfirmedDataUp or UnconfirmedDataUp)
+	EUI         string             `mapstructure:"eui"`
+	Address     string             `mapstructure:"address"`
+	NwkSEncKey  string             `mapstructure:"network_session_encription_key"`
+	SNwkSIntKey string             `mapstructure:"serving_network_session_integrity_key"`    //For Lorawan 1.0 this is the same as the NwkSEncKey
+	FNwkSIntKey string             `mapstructure:"forwarding_network_session_integrity_key"` //For Lorawan 1.0 this is the same as the NwkSEncKey
+	AppSKey     string             `mapstructure:"application_session_key"`
+	Marshaler   string             `mapstructure:"marshaler"`
+	NwkKey      string             `mapstructure:"nwk_key"`     //Network key, used to be called application key for Lorawan 1.0
+	AppKey      string             `mapstructure:"app_key"`     //Application key, for Lorawan 1.1
+	Major       lorawan.Major      `mapstructure:"major"`       //Lorawan major version
+	MACVersion  lorawan.MACVersion `mapstructure:"mac_version"` //Lorawan MAC version
+	MType       lorawan.MType      `mapstructure:"mtype"`       //LoRaWAN mtype (ConfirmedDataUp or UnconfirmedDataUp)
+	Application string             `mapstructure:"application"` // owner application
 }
 
 type dataRate struct {
-	Bandwith     int `toml:"bandwith"`
-	SpreadFactor int `toml:"spread_factor"`
-	BitRate      int `toml:"bit_rate"`
+	Bandwith     int `mapstructure:"bandwith"`
+	SpreadFactor int `mapstructure:"spread_factor"`
+	BitRate      int `mapstructure:"bit_rate"`
 }
 
 type rxInfo struct {
-	Channel   int     `toml:"channel"`
-	CodeRate  string  `toml:"code_rate"`
-	CrcStatus int     `toml:"crc_status"`
-	Frequency int     `toml:"frequency"`
-	LoRaSNR   float64 `toml:"lora_snr"`
-	RfChain   int     `toml:"rf_chain"`
-	Rssi      int     `toml:"rssi"`
-}
-
-type tomlConfig struct {
-	MQTT        mqtt        `toml:"mqtt"`
-	UDP         udp         `toml:"udp"`
-	Band        band        `toml:"band"`
-	Device      device      `timl:"device"`
-	GW          gateway     `toml:"gateway"`
-	DR          dataRate    `toml:"data_rate"`
-	RXInfo      rxInfo      `toml:"rx_info"`
-	DefaultData defaultData `toml:"default_data"`
-	RawPayload  rawPayload  `toml:"raw_payload"`
+	Channel   int     `mapstructure:"channel"`
+	CodeRate  string  `mapstructure:"code_rate"`
+	CrcStatus int     `mapstructure:"crc_status"`
+	Frequency int     `mapstructure:"frequency"`
+	LoRaSNR   float64 `mapstructure:"lora_snr"`
+	RfChain   int     `mapstructure:"rf_chain"`
+	Rssi      int     `mapstructure:"rssi"`
 }
 
 //defaultData holds optional default encoded data.
 type defaultData struct {
-	Names    []string    `toml:"names"`
-	Data     [][]float64 `toml:"data"`
-	Interval int32       `toml:"interval"`
-	Random   bool        `toml:"random"`
+	Names    []string    `mapstructure:"names"`
+	Data     [][]float64 `mapstructure:"data"`
+	Interval int32       `mapstructure:"interval"`
+	Random   bool        `mapstructure:"random"`
+	Timeout  uint32      `mapstructure:"timeout"`
 }
 
 //rawPayload holds optional raw bytes payload (hex encoded).
 type rawPayload struct {
-	Payload string `toml:"payload"`
-	UseRaw  bool   `toml:"use_raw"`
-	Fport   int    `toml:"fport"`
+	Payload string `mapstructure:"payload"`
+	UseRaw  bool   `mapstructure:"use_raw"`
+	Fport   int    `mapstructure:"fport"`
+}
+
+type tomlConfig struct {
+	MQTT        mqtt        `mapstructure:"mqtt"`
+	UDP         udp         `mapstructure:"udp"`
+	Band        band        `mapstructure:"band"`
+	Device      device      `timl:"device"`
+	GW          gateway     `mapstructure:"gateway"`
+	DR          dataRate    `mapstructure:"data_rate"`
+	RXInfo      rxInfo      `mapstructure:"rx_info"`
+	DefaultData defaultData `mapstructure:"default_data"`
+	RawPayload  rawPayload  `mapstructure:"raw_payload"`
 }
 
 var confFile *string
-var config *tomlConfig
+var config tomlConfig
 var stop bool
 var marshalers = map[string]int{"json": 0, "protobuf": 1, "v2_json": 2}
 var bands = []lwband.Name{
@@ -111,250 +113,88 @@ var sendOnce bool
 var interval int
 
 func importConf() {
-
-	if config == nil {
-		cMqtt := mqtt{}
-
-		cDev := device{}
-
-		cGw := gateway{}
-
-		cBand := band{}
-
-		cDr := dataRate{}
-
-		cRx := rxInfo{}
-
-		dd := defaultData{}
-
-		cPl := rawPayload{}
-
-		config = &tomlConfig{
-			MQTT:        cMqtt,
-			Band:        cBand,
-			Device:      cDev,
-			GW:          cGw,
-			DR:          cDr,
-			RXInfo:      cRx,
-			DefaultData: dd,
-			RawPayload:  cPl,
+	viper.SetConfigFile(*confFile)
+	// If a config file is found, read it in.
+	if err := viper.ReadInConfig(); err != nil {
+		switch err.(type) {
+		case viper.ConfigFileNotFoundError:
+			log.Warning("No configuration file found, using default.")
+		default:
+			log.WithError(err).Fatal("read configuration file error")
 		}
+	} else {
+		log.Println("Using config file:", viper.ConfigFileUsed())
 	}
 
-	if _, err := toml.DecodeFile(*confFile, &config); err != nil {
-		log.Println(err)
-		return
+	// read in environment variables that match
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
+
+	if err := viper.Unmarshal(&config); err != nil {
+		log.WithError(err).Fatal("unmarshal config error")
+	}
+}
+
+func setupMqtt(config *tomlConfig) {
+
+	opts := MQTT.NewClientOptions().AddBroker(config.MQTT.Server)
+	opts.SetKeepAlive(2 * time.Second)
+	opts.SetPingTimeout(1 * time.Second)
+	opts.SetUsername(config.MQTT.User)
+	opts.SetPassword(config.MQTT.Password)
+	opts.SetCleanSession(true)
+	opts.SetClientID(fmt.Sprintf("sim-%s", config.Device.EUI))
+	opts.SetOnConnectHandler(onMqttConnected)
+	opts.SetConnectionLostHandler(func(c MQTT.Client, reason error) {
+		log.Errorf("Mqtt lost connect %s", reason)
+	})
+	config.MQTT.Client = MQTT.NewClient(opts)
+	for {
+		if token := config.MQTT.Client.Connect(); token.Wait() && token.Error() != nil {
+			log.Errorf("mqtt: connecting to mqtt broker [%s] failed, will retry in 2s: %s", config.MQTT.Server, token.Error())
+			time.Sleep(2 * time.Second)
+		} else {
+			break
+		}
+	}
+}
+
+func onMqttConnected(c MQTT.Client) {
+	topic := fmt.Sprintf("application/%s/device/%s/rx", config.Device.Application, config.Device.EUI)
+	for {
+		log.WithFields(log.Fields{
+			"topic": topic,
+			"qos":   0,
+		}).Info("Mqtt: subscribing topic")
+		if token := c.Subscribe(topic, 0, FunMqttHandle); token.Wait() && token.Error() != nil {
+			log.Error(token.Error(), "retry 1 second")
+			time.Sleep(time.Second)
+			continue
+		}
+		break
+	}
+}
+
+func setupPprof(isStart bool) {
+	if isStart {
+		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
 	}
 }
 
 func main() {
-
 	confFile = flag.String("conf", "conf.toml", "path to toml configuration file")
+	logpath := flag.Bool("logpath", false, "log call path")
+	pprof := flag.Bool("pprof", false, "run pprof server")
+
 	flag.Parse()
+	log.SetReportCaller(*logpath)
+
 	importConf()
 	lds.GwEUI = config.GW.MAC
-	RunUdp(config)
-}
 
-func run() {
+	go setupPprof(*pprof)
 
-	//Connect to the broker
-	opts := MQTT.NewClientOptions()
-	opts.AddBroker(config.MQTT.Server)
-	opts.SetUsername(config.MQTT.User)
-	opts.SetPassword(config.MQTT.Password)
+	setupMqtt(&config)
 
-	client := MQTT.NewClient(opts)
-
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		log.Println("Connection error")
-		log.Println(token.Error())
-	}
-
-	log.Println("Connection established.")
-
-	//Build your node with known keys (ABP).
-	nwkSEncHexKey := config.Device.NwkSEncKey
-	sNwkSIntHexKey := config.Device.SNwkSIntKey
-	fNwkSIntHexKey := config.Device.FNwkSIntKey
-	appSHexKey := config.Device.AppSKey
-	devHexAddr := config.Device.Address
-	devAddr, err := lds.HexToDevAddress(devHexAddr)
-	if err != nil {
-		log.Printf("dev addr error: %s", err)
-	}
-
-	nwkSEncKey, err := lds.HexToKey(nwkSEncHexKey)
-	if err != nil {
-		log.Printf("nwkSEncKey error: %s", err)
-	}
-
-	sNwkSIntKey, err := lds.HexToKey(sNwkSIntHexKey)
-	if err != nil {
-		log.Printf("sNwkSIntKey error: %s", err)
-	}
-
-	fNwkSIntKey, err := lds.HexToKey(fNwkSIntHexKey)
-	if err != nil {
-		log.Printf("fNwkSIntKey error: %s", err)
-	}
-
-	appSKey, err := lds.HexToKey(appSHexKey)
-	if err != nil {
-		log.Printf("appskey error: %s", err)
-	}
-
-	devEUI, err := lds.HexToEUI(config.Device.EUI)
-	if err != nil {
-		return
-	}
-
-	nwkHexKey := config.Device.NwkKey
-	appHexKey := config.Device.AppKey
-
-	appKey, err := lds.HexToKey(appHexKey)
-	if err != nil {
-		return
-	}
-	nwkKey, err := lds.HexToKey(nwkHexKey)
-	if err != nil {
-		return
-	}
-	appEUI := [8]byte{0, 0, 0, 0, 0, 0, 0, 0}
-
-	device := &lds.Device{
-		DevEUI:      devEUI,
-		DevAddr:     devAddr,
-		NwkSEncKey:  nwkSEncKey,
-		SNwkSIntKey: sNwkSIntKey,
-		FNwkSIntKey: fNwkSIntKey,
-		AppSKey:     appSKey,
-		AppKey:      appKey,
-		NwkKey:      nwkKey,
-		AppEUI:      appEUI,
-		UlFcnt:      0,
-		DlFcnt:      0,
-		Major:       lorawan.Major(config.Device.Major),
-		MACVersion:  lorawan.MACVersion(config.Device.MACVersion),
-	}
-
-	device.SetMarshaler(config.Device.Marshaler)
-
-	dataRate := &lds.DataRate{
-		Bandwidth:    config.DR.Bandwith,
-		Modulation:   "LORA",
-		SpreadFactor: config.DR.SpreadFactor,
-		BitRate:      config.DR.BitRate,
-	}
-
-	mult := 1
-
-	for {
-		if stop {
-			stop = false
-			return
-		}
-		payload := []byte{}
-
-		if config.RawPayload.UseRaw {
-			var pErr error
-			payload, pErr = hex.DecodeString(config.RawPayload.Payload)
-			if err != nil {
-				log.Errorf("couldn't decode hex payload: %s\n", pErr)
-				return
-			}
-		} else {
-			for _, v := range config.DefaultData.Data {
-				rand.Seed(time.Now().UnixNano() / 10000)
-				if rand.Intn(10) < 5 {
-					mult *= -1
-				}
-				num := float32(v[0])
-				if config.DefaultData.Random {
-					num = float32(v[0] + float64(mult)*rand.Float64()/100)
-				}
-				arr := lds.GenerateFloat(num, float32(v[1]), int32(v[2]))
-				payload = append(payload, arr...)
-
-			}
-		}
-
-		log.Printf("Bytes: %v\n", payload)
-
-		rxInfo := &lds.RxInfo{
-			Channel:   config.RXInfo.Channel,
-			CodeRate:  config.RXInfo.CodeRate,
-			CrcStatus: config.RXInfo.CrcStatus,
-			DataRate:  dataRate,
-			Frequency: config.RXInfo.Frequency,
-			LoRaSNR:   float32(config.RXInfo.LoRaSNR),
-			Mac:       config.GW.MAC,
-			RfChain:   config.RXInfo.RfChain,
-			Rssi:      config.RXInfo.RfChain,
-			Size:      len(payload),
-			Timestamp: int32(time.Now().UnixNano() / 1000000000),
-		}
-
-		//////
-
-		gwID, err := lds.MACToGatewayID(config.GW.MAC)
-		if err != nil {
-			log.Errorf("gw mac error: %s\n", err)
-			return
-		}
-		now := time.Now()
-		rxTime := ptypes.TimestampNow()
-		tsge := ptypes.DurationProto(now.Sub(time.Time{}))
-
-		urx := gw.UplinkRXInfo{
-			GatewayId:         gwID,
-			Rssi:              int32(rxInfo.Rssi),
-			LoraSnr:           float64(rxInfo.LoRaSNR),
-			Channel:           uint32(rxInfo.Channel),
-			RfChain:           uint32(rxInfo.RfChain),
-			TimeSinceGpsEpoch: tsge,
-			Time:              rxTime,
-			Timestamp:         uint32(rxTime.GetSeconds()),
-			Board:             0,
-			Antenna:           0,
-			Location:          nil,
-			FineTimestamp:     nil,
-			FineTimestampType: gw.FineTimestampType_NONE,
-		}
-
-		lmi := &gw.LoRaModulationInfo{
-			Bandwidth:       uint32(rxInfo.DataRate.Bandwidth),
-			SpreadingFactor: uint32(rxInfo.DataRate.SpreadFactor),
-			CodeRate:        rxInfo.CodeRate,
-		}
-
-		umi := &gw.UplinkTXInfo_LoraModulationInfo{
-			LoraModulationInfo: lmi,
-		}
-
-		utx := gw.UplinkTXInfo{
-			Frequency:      uint32(rxInfo.Frequency),
-			ModulationInfo: umi,
-		}
-
-		//////
-		mType := lorawan.UnconfirmedDataUp
-		if config.Device.MType > 0 {
-			mType = lorawan.ConfirmedDataUp
-		}
-
-		//Now send an uplink
-		msg, err := device.UplinkMessage(mType, 1, &urx, &utx, payload, config.GW.MAC, config.Band.Name, *dataRate)
-		if err != nil {
-			log.Printf("couldn't send uplink: %s\n", err)
-		}
-
-		log.Printf("%v\n", msg)
-
-		device.UlFcnt++
-
-		time.Sleep(time.Duration(config.DefaultData.Interval) * time.Millisecond)
-
-	}
-
+	RunUdp(&config)
 }
