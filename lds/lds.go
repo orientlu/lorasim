@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math"
 
 	log "github.com/sirupsen/logrus"
@@ -71,7 +70,7 @@ type Device struct {
 }
 
 func (d *Device) SetMarshaler(opt string) {
-	log.Printf("switching to marshaler: %s\n", opt)
+	log.Debugf("switching to marshaler: %s\n", opt)
 	switch opt {
 	case "json":
 		d.marshal = func(msg proto.Message) ([]byte, error) {
@@ -170,13 +169,13 @@ func (d *Device) UplinkMessage(mType lorawan.MType, fPort uint8, rxInfo *gw.Upli
 	}
 
 	if err := phy.EncryptFRMPayload(d.AppSKey); err != nil {
-		fmt.Printf("encrypt frm payload: %s", err)
+		log.Debugf("encrypt frm payload: %s", err)
 		return nil, err
 	}
 
 	if d.MACVersion == lorawan.LoRaWAN1_0 {
 		if err := phy.SetUplinkDataMIC(lorawan.LoRaWAN1_0, 0, 0, 0, d.NwkSEncKey, d.NwkSEncKey); err != nil {
-			fmt.Printf("set uplink mic error: %s", err)
+			log.Debugf("set uplink mic error: %s", err)
 			return nil, err
 		}
 		phy.ValidateUplinkDataMIC(lorawan.LoRaWAN1_0, 0, 0, 0, d.NwkSEncKey, d.NwkSEncKey)
@@ -230,7 +229,7 @@ func (d *Device) UplinkMessage(mType lorawan.MType, fPort uint8, rxInfo *gw.Upli
 			return nil, err
 		}
 
-		log.Printf("Got MIC: %s\n", phy.MIC)
+		log.Debugf("Got MIC: %s\n", phy.MIC)
 
 	} else {
 		return nil, errors.New("unknown lorawan version")
@@ -239,7 +238,7 @@ func (d *Device) UplinkMessage(mType lorawan.MType, fPort uint8, rxInfo *gw.Upli
 	phyBytes, err := phy.MarshalBinary()
 	if err != nil {
 		if err != nil {
-			fmt.Printf("marshal binary error: %s", err)
+			log.Debugf("marshal binary error: %s", err)
 			return nil, err
 		}
 	}
@@ -250,21 +249,21 @@ func (d *Device) UplinkMessage(mType lorawan.MType, fPort uint8, rxInfo *gw.Upli
 		TxInfo:     txInfo,
 	}
 
-	fmt.Printf("Message PHY payload: %v\n", string(message.PhyPayload))
+	log.Debugf("Message PHY payload: %v\n", string(message.PhyPayload))
 
 	bytes, err := d.marshal(&message)
 	if err != nil {
 		return nil, err
 	}
 
-	fmt.Printf("Marshaled message: %v\n", string(bytes))
-	return  bytes, nil
+	log.Debugf("Marshaled message: %v\n", string(bytes))
+	return bytes, nil
 
 }
 
-func(d *Device) Uplink(client MQTT.Client, gwMAC string, bytes []byte) error {
+func (d *Device) Uplink(client MQTT.Client, gwMAC string, bytes []byte) error {
 	if token := client.Publish("gateway/"+gwMAC+"/rx", 0, false, bytes); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
+		log.Error(token.Error())
 		return token.Error()
 	}
 
@@ -302,7 +301,7 @@ func HexToKey(hexKey string) ([16]byte, error) {
 func HexToEUI(hexEUI string) (lorawan.EUI64, error) {
 	var eui lorawan.EUI64
 	if err := eui.UnmarshalText([]byte(hexEUI)); err != nil {
-		fmt.Errorf("wron eui: %s\n", err)
+		log.Errorf("wron eui: %s\n", err)
 		return eui, err
 	}
 	return eui, nil
@@ -331,19 +330,19 @@ func testMIC(appKey [16]byte, appEUI, devEUI [8]byte) error {
 	}
 
 	if err := joinPhy.SetUplinkJoinMIC(appKey); err != nil {
-		fmt.Printf("set uplink join mic error: %s", err)
+		log.Debugf("set uplink join mic error: %s", err)
 		return err
 	}
 
-	fmt.Println("Printing MIC")
-	fmt.Println(hex.EncodeToString(joinPhy.MIC[:]))
+	log.Debug("Printing MIC")
+	log.Debug(hex.EncodeToString(joinPhy.MIC[:]))
 
 	joinStr, err := joinPhy.MarshalText()
 	if err != nil {
-		fmt.Printf("join marshal error: %s", err)
+		log.Errorf("join marshal error: %s", err)
 		return err
 	}
-	fmt.Println(joinStr)
+	log.Debug(joinStr)
 
 	return nil
 }
@@ -356,11 +355,11 @@ func publish(client MQTT.Client, topic string, v interface{}) error {
 		return err
 	}
 
-	fmt.Println("Publishing:")
-	fmt.Println(string(bytes))
+	log.Debug("Publishing:")
+	log.Debug(string(bytes))
 
 	if token := client.Publish(topic, 0, false, bytes); token.Wait() && token.Error() != nil {
-		fmt.Println(token.Error())
+		log.Error(token.Error())
 		return token.Error()
 	}
 

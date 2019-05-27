@@ -2,7 +2,6 @@ package lds
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"encoding/hex"
@@ -64,7 +63,7 @@ func genToken() []byte {
 func GenGWMP(gweui string) [12]byte {
 	var ret [12]byte
 	if len(gweui) != 16 {
-		log.Printf("error gweui %s\n", gweui)
+		log.Errorf("error gweui %s\n", gweui)
 		gweui = "60c5a8fffe6f7473"
 	}
 
@@ -102,7 +101,7 @@ func GwStatPacket() []byte {
 
 	msg, err := json.Marshal(gwstat)
 	if err != nil {
-		log.Printf("couldn't marshal msg: %s\n", err)
+		log.Errorf("couldn't marshal msg: %s\n", err)
 		return nil
 	}
 
@@ -180,13 +179,13 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8,
 	}
 
 	if err := phy.EncryptFRMPayload(d.AppSKey); err != nil {
-		fmt.Printf("encrypt frm payload: %s", err)
+		log.Debugf("encrypt frm payload: %s", err)
 		return nil, err
 	}
 
 	if d.MACVersion == lorawan.LoRaWAN1_0 {
 		if err := phy.SetUplinkDataMIC(lorawan.LoRaWAN1_0, 0, 0, 0, d.NwkSEncKey, d.NwkSEncKey); err != nil {
-			fmt.Printf("set uplink mic error: %s", err)
+			log.Debugf("set uplink mic error: %s", err)
 			return nil, err
 		}
 		phy.ValidateUplinkDataMIC(lorawan.LoRaWAN1_0, 0, 0, 0, d.NwkSEncKey, d.NwkSEncKey)
@@ -242,24 +241,24 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8,
 			return nil, err
 		}
 
-		log.Printf("Got MIC: %s\n", phy.MIC)
+		log.Debugf("Got MIC: %s\n", phy.MIC)
 
 	} else {
 		return nil, errors.New("unknown lorawan version")
 	}
 
 	phyjson, _ := json.Marshal(phy)
-	log.Printf("uplink phy: %s\n", phyjson)
+	log.Debugf("uplink phy: %s\n", phyjson)
 
 	phyBytes, err := phy.MarshalBinary()
 	if err != nil {
 		if err != nil {
-			fmt.Printf("marshal binary error: %s", err)
+			log.Errorf("marshal binary error: %s", err)
 			return nil, err
 		}
 	}
 
-	log.Printf("Upload phy payload hex: % x\n", phyBytes)
+	log.Debugf("Upload phy payload hex: % x\n", phyBytes)
 
 	rxInfo.PhyPayload = phyBytes
 	rxInfo.Size = len(phyBytes)
@@ -269,7 +268,7 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8,
 
 	msg, err := json.Marshal(rx)
 	if err != nil {
-		log.Printf("couldn't marshal msg: %s\n", err)
+		log.Errorf("couldn't marshal msg: %s\n", err)
 		return nil, err
 	}
 

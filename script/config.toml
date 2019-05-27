@@ -162,6 +162,21 @@ serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
 forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
 application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
 
+[[app.ns.device]]
+name = "hr-2"
+des = "device hr-2"
+eui = "0000000000000002"
+skip_fcnt = true
+profiles_name = "hr-1-pf"
+profiles_mac_version = "1.1.0"
+profiles_reg_version = "A"
+addr = "00865bd7"
+network_session_encription_key = "bc97ea1ff62e7a3490135d989aae6bca"
+serving_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+forwarding_network_session_integrity_key = "bc97ea1ff62e7a3490135d989aae6bca"
+application_session_key = "bc97ea1ff62e7a3490135d989aae6bca"
+
+
 ## add a device group
 ## max 65535, device id/addr/key suffix will between : 0000 -> FFFF
 [[app.ns.device_group]]

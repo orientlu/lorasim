@@ -88,7 +88,7 @@ type TomlConfig struct {
 	UDP         udp          `mapstructure:"udp"`
 	Band        band         `mapstructure:"band"`
 	DeviceComm  deviceCommon `mapstructure:"device_common"`
-	Devices     []device     `mapstructure:"device"`
+	Devices     []device     `mapstructure:"devices"`
 	GW          gateway      `mapstructure:"gateway"`
 	DR          dataRate     `mapstructure:"data_rate"`
 	RXInfo      rxInfo       `mapstructure:"rx_info"`

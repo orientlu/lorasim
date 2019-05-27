@@ -19,22 +19,7 @@ import (
 )
 
 var confFile *string
-
-//var marshalers = map[string]int{"json": 0, "protobuf": 1, "v2_json": 2}
-//var bands = []lwband.Name{
-//	lwband.AS_923,
-//	lwband.AU_915_928,
-//	lwband.CN_470_510,
-//	lwband.CN_779_787,
-//	lwband.EU_433,
-//	lwband.EU_863_870,
-//	lwband.IN_865_867,
-//	lwband.KR_920_923,
-//	lwband.US_902_928,
-//	lwband.RU_864_870,
-//}
-//var sendOnce bool
-//var interval int
+var quit = false
 
 // read config from flag/env/file
 func importConf() {
@@ -48,7 +33,7 @@ func importConf() {
 			log.WithError(err).Fatal("read configuration file error")
 		}
 	} else {
-		log.Println("Using config file:", viper.ConfigFileUsed())
+		log.Debug("Using config file:", viper.ConfigFileUsed())
 	}
 
 	// read in environment variables that match
@@ -92,10 +77,13 @@ func onMqttConnected(c MQTT.Client) {
 			// AS publish topic
 			topic := fmt.Sprintf("application/%s/device/%s/rx", config.C.DeviceComm.Application, EUI)
 			for {
+				if quit {
+					break
+				}
 				log.WithFields(log.Fields{
 					"topic": topic,
 					"qos":   0,
-				}).Info("Mqtt: subscribing topic")
+				}).Debug("Mqtt: subscribing topic")
 				if token := c.Subscribe(topic, 0, udpgw.FunMqttHandle); token.Wait() && token.Error() != nil {
 					log.Error(token.Error(), "retry 1 second")
 					time.Sleep(time.Second)
@@ -123,6 +111,9 @@ func main() {
 	flag.Parse()
 	log.SetReportCaller(*showlogpath)
 	log.SetLevel(log.Level(*logLevel))
+	log.SetFormatter(&log.TextFormatter{
+		FullTimestamp: true,
+	})
 
 	importConf()
 	lds.GwEUI = config.C.GW.MAC
@@ -133,5 +124,6 @@ func main() {
 
 	udpgw.RunUDP()
 
+	quit = true
 	config.C.MQTT.Client.Disconnect(200)
 }

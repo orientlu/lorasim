@@ -24,9 +24,7 @@ import (
 )
 
 var conf = &config.C
-var stop = false
-
-var devs map[lorawan.DevAddr]*lds.Device
+var quit = false
 
 type udp struct {
 	Conn          *net.UDPConn
@@ -34,7 +32,33 @@ type udp struct {
 	SendTime      map[lorawan.EUI64]map[uint32]time.Time
 	SendTimeMutex *sync.Mutex
 	wg            sync.WaitGroup
+	devs          map[lorawan.DevAddr]*lds.Device
 }
+
+type stat struct {
+	totalSend uint64
+	totalRev  uint64
+
+	slotSend  uint32
+	slotRev   uint32
+	slot100Ms uint32
+	slot200Ms uint32
+	slot300Ms uint32
+	slot500Ms uint32
+	slot800Ms uint32
+	slot1S    uint32
+	slot2S    uint32
+	slot5S    uint32
+	slot10S   uint32
+}
+
+// STAT ....
+var STAT stat
+
+const (
+	// SlotInterval stat interval
+	SlotInterval = 1000 // Ms
+)
 
 // UDP gw udp
 var UDP udp
@@ -42,25 +66,30 @@ var UDP udp
 // FunMqttHandle ...
 var FunMqttHandle MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
 	var js map[string]interface{}
+
 	if err := json.Unmarshal(msg.Payload(), &js); err == nil {
 		ackFcnt := (uint32)(js["fCnt"].(float64))
 		strEui := js["devEUI"].(string)
+		log.WithFields(log.Fields{
+			"EUI":  strEui,
+			"fcnt": ackFcnt}).Debug("app mqtt msg")
+
 		devEui, err := lds.HexToEUI(strEui)
 		if err != nil {
 			log.Error("app mqtt HexToEUI error: ", err)
 			return
 		}
-
 		UDP.SendTimeMutex.Lock()
 		defer UDP.SendTimeMutex.Unlock()
 
 		if sendTime, ok := UDP.SendTime[devEui][ackFcnt]; ok {
-			log.Warningf("msg_elapsed[%s]: %d ms\n", strEui, time.Now().Sub(sendTime)/time.Millisecond)
-			//log.Warningf("msg fcnt[%d] elapsed: %s\n", ackFcnt, time.Since(sendTime))
+			delay := time.Now().Sub(sendTime) / time.Millisecond
+			log.Infof("msg_elapsed[eui:%s]: %d ms\n", strEui, delay)
+			//log.Infof("msg fcnt[%d] elapsed: %s\n", ackFcnt, time.Since(sendTime))
 			delete(UDP.SendTime[devEui], ackFcnt)
 
 		} else {
-			log.Warningf("app mqtt msg fnct[%d] can not found", ackFcnt)
+			log.Infof("app mqtt msg fnct[%d] can not found", ackFcnt)
 		}
 	} else {
 		log.Errorf("app mqtt msg json unmarshal error %s", err)
@@ -69,7 +98,7 @@ var FunMqttHandle MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Messag
 
 func (u *udp) Send(msg []byte) {
 	UDP.sendChan <- &msg
-	log.Debug("udp package push to Channel: ", msg)
+	log.Trace("udp package push to Channel: ", msg)
 }
 
 func sendUDPLoop() {
@@ -79,8 +108,10 @@ func sendUDPLoop() {
 			log.Error("udp send failed: ", err)
 			continue
 		}
-		log.Debug("udp send package: ", msg)
+		log.Trace("udp send package: ", msg)
 	}
+	// close udp when quit
+	UDP.Conn.Close()
 }
 
 // receive udp package and send ack to ns
@@ -96,10 +127,10 @@ func readUDPLoop() {
 
 	gweuibytes, _ := hex.DecodeString(conf.GW.MAC)
 	data := make([]byte, 1024)
-	for stop == false {
+	for quit == false {
 		rlen, err := UDP.Conn.Read(data)
 		if err != nil {
-			log.Error("faixled to read UDP msg because of ", err)
+			log.Error("failed to read UDP msg because of ", err)
 			continue
 		}
 
@@ -108,7 +139,7 @@ func readUDPLoop() {
 			if plen > 4 {
 				plen = 4
 			}
-			log.Infof("downlink message head: % x", data[:plen])
+			log.Debugf("downlink message head: % x", data[:plen])
 		}
 
 		if rlen > 12 && data[3] == '\x03' {
@@ -141,34 +172,34 @@ func readUDPLoop() {
 
 			// print phy json
 			phystr, _ := json.Marshal(phy)
-			log.Infof("downlink phypayload: %s\n", phystr)
+			log.Debugf("downlink phypayload: %s\n", phystr)
 
 			b, _ := b64.StdEncoding.DecodeString(payloadb64)
 			js["txpk"].(map[string]interface{})["data"] = fmt.Sprintf("% x", b)
 
 			newpayload, _ := json.Marshal(js)
-			log.Infof("downlink macpayload: %s\n", newpayload)
+			log.Debugf("downlink macpayload: %s\n", newpayload)
 
 			//answer reply
 			reply := append(data[0:4], gweuibytes...)
 			reply[3] = '\x05'
 			UDP.Send(reply)
-			log.Infof("Send downlink reply: % x\n", reply)
+			log.Debugf("Send downlink reply: % x\n", reply)
 
 			// replay linkadr request
 			if macPL.FPort != nil && *macPL.FPort == 0 {
 				if strings.Contains(string(phystr), "LinkADRReq") {
 					rephy := []byte{'\x03', '\x07', '\x03', '\x07', '\x03', '\x07',
 						'\x03', '\x07', '\x03', '\x07', '\x03', '\x07', '\x06', '\xff', '\x06'}
-					msg, _ := genPacketBytes(conf, devs[macPL.FHDR.DevAddr], rephy, 0, 0, rephy)
+					msg, _ := genPacketBytes(conf, UDP.devs[macPL.FHDR.DevAddr], rephy, 0, 0, rephy)
 					msg[3] = '\x00'
-					log.Infof("LinkAdrAns: %s", msg[12:])
+					log.Debugf("LinkAdrAns: %s", msg[12:])
 					UDP.Send(msg)
 				} else if strings.Contains(string(phystr), "DevStatusReq") {
 					rephy := []byte{'\x06', '\xff', '\x0e'}
-					msg, _ := genPacketBytes(conf, devs[macPL.FHDR.DevAddr], rephy, 0, 0, nil)
+					msg, _ := genPacketBytes(conf, UDP.devs[macPL.FHDR.DevAddr], rephy, 0, 0, nil)
 					msg[3] = '\x00'
-					log.Infof("DevStatusAns: %s", msg[12:])
+					log.Debugf("DevStatusAns: %s", msg[12:])
 					UDP.Send(msg)
 				}
 
@@ -202,10 +233,10 @@ func readUDPLoop() {
 			}
 
 			if len(foptreply) > 0 {
-				log.Infof("fopt uplink: % x\n", foptreply)
-				msg, _ := genPacketBytes(conf, devs[macPL.FHDR.DevAddr], []byte("\x00"), 8, 15, foptreply)
+				log.Debugf("fopt uplink: % x\n", foptreply)
+				msg, _ := genPacketBytes(conf, UDP.devs[macPL.FHDR.DevAddr], []byte("\x00"), 8, 15, foptreply)
 				msg[3] = '\x00'
-				log.Infof("MacCommand Ans: %s\n", msg[12:])
+				log.Debugf("MacCommand Ans: %s\n", msg[12:])
 				UDP.Send(msg)
 			}
 		}
@@ -214,26 +245,26 @@ func readUDPLoop() {
 
 // send gw state 30s
 func sendGWStatelLoop() {
-	for stop == false {
+	for quit == false {
 		msg := lds.GwStatPacket()
 		UDP.Send(msg)
-		log.Infof("send gwstat: % x\n", msg)
+		log.Debugf("send gwstat: % x\n", msg)
 		time.Sleep(time.Duration(30000) * time.Millisecond)
 	}
 }
 
 // send gw keepalived 3s
 func sendGWKeepalivedLoop() {
-	for stop == false {
+	for quit == false {
 		msg := lds.GenGWKeepalived()
 		UDP.Send(msg)
-		log.Infof("send gwkeep: % x\n", msg)
+		log.Debugf("send gwkeep: % x\n", msg)
 		time.Sleep(time.Duration(3000) * time.Millisecond)
 	}
 }
 
 func checkTimeoutPackageLoop() {
-	for stop == false {
+	for quit == false {
 		time.Sleep(time.Duration(conf.DefaultData.Timeout) * time.Millisecond)
 		go func() {
 			log.Debug("Check timeout package")
@@ -255,7 +286,17 @@ func checkTimeoutPackageLoop() {
 	}
 }
 
-func (u *udp) init(server string) {
+func statLoop() {
+	for quit == false {
+		time.Sleep(time.Duration(SlotInterval) * time.Millisecond)
+
+		log.WithFields(log.Fields{
+			"TotalSend": 1,
+		}).Info("stat:")
+	}
+}
+
+func (u *udp) init(server string) (err error) {
 
 	u.sendChan = make(chan *[]byte, 100)
 	u.SendTimeMutex = &sync.Mutex{}
@@ -268,48 +309,56 @@ func (u *udp) init(server string) {
 	nwkSEncKey, err := lds.HexToKey(nwkSEncHexKey)
 	if err != nil {
 		log.Errorf("nwkSEncKey error: %s", err)
+		return
 	}
 
 	sNwkSIntKey, err := lds.HexToKey(sNwkSIntHexKey)
 	if err != nil {
 		log.Errorf("sNwkSIntKey error: %s", err)
+		return
 	}
 
 	fNwkSIntKey, err := lds.HexToKey(fNwkSIntHexKey)
 	if err != nil {
 		log.Errorf("fNwkSIntKey error: %s", err)
+		return
 	}
 
 	appSKey, err := lds.HexToKey(appSHexKey)
 	if err != nil {
-		log.Errorf("appskey error: %s", err)
+		log.Errorf("appSKey error: %s", err)
+		return
 	}
 
 	nwkHexKey := conf.DeviceComm.NwkKey
 	appHexKey := conf.DeviceComm.AppKey
 	nwkKey, err := lds.HexToKey(nwkHexKey)
 	if err != nil {
-		log.Errorf("nwkey error: %s", err)
+		log.Errorf("nwkKey error: %s", err)
+		return
 	}
 	appKey, err := lds.HexToKey(appHexKey)
 	if err != nil {
-		log.Errorf("appkey error: %s", err)
+		log.Errorf("appKey error: %s", err)
+		return
 	}
 
-	appEUI := [8]byte{0, 0, 0, 0, 0, 0, 0, 0}
+	appEUI := [8]byte{6, 0, 0, 0, 0, 0, 0, 0}
 
 	// make(map[uint32]time.time) when add Device
 	u.SendTime = make(map[lorawan.EUI64]map[uint32]time.Time)
-	devs = make(map[lorawan.DevAddr]*lds.Device)
+	u.devs = make(map[lorawan.DevAddr]*lds.Device)
 
 	for _, dev := range conf.Devices {
+		log.WithField("EUI", dev.EUI).Debug("Init device")
 		devAddr, err := lds.HexToDevAddress(dev.Address)
 		if err != nil {
 			log.Errorf("dev addr error: %s", err)
+			return err
 		}
 		devEUI, err := lds.HexToEUI(dev.EUI)
 		if err != nil {
-			return
+			return err
 		}
 		u.SendTime[devEUI] = make(map[uint32]time.Time)
 
@@ -329,20 +378,22 @@ func (u *udp) init(server string) {
 			MACVersion:  lorawan.MACVersion(conf.DeviceComm.MACVersion),
 		}
 		device.SetMarshaler(conf.DeviceComm.Marshaler)
-		devs[devAddr] = device
+		u.devs[devAddr] = device
 	}
 
 	addr, err := net.ResolveUDPAddr("udp", server)
 	if err != nil {
 		log.Errorf("Can't resolve address: %s", err)
-		os.Exit(1)
+		return err
 	}
 
 	u.Conn, err = net.DialUDP("udp", nil, addr)
 	if err != nil {
 		log.Error("Can't dial: ", err)
-		os.Exit(1)
+		return err
 	}
+
+	return
 }
 
 func genPacketBytes(config *config.TomlConfig, d *lds.Device, payload []byte, fport uint8, fOptlen uint8, fOpts []byte) ([]byte, error) {
@@ -406,7 +457,14 @@ func genPacketBytes(config *config.TomlConfig, d *lds.Device, payload []byte, fp
 
 func deviceRun(dev *lds.Device) {
 	mult := 1
-	for stop == false {
+
+	// disperse device slot
+	rand.Seed(time.Now().UnixNano())
+	delay := rand.Intn(int(conf.DefaultData.Interval))
+	time.Sleep(time.Duration(delay) * time.Millisecond)
+	log.Infof("Device[eui:%s]: after delay %d ms", dev.DevEUI, delay)
+
+	for quit == false {
 		payload := []byte{}
 		fport := 1
 		if conf.RawPayload.UseRaw {
@@ -431,14 +489,14 @@ func deviceRun(dev *lds.Device) {
 				payload = append(payload, arr...)
 			}
 		}
-		log.Debugf("Send payload, Bytes: % x\n", payload)
+		log.Tracef("Send payload, Bytes: % x\n", payload)
 
 		msg, err := genPacketBytes(conf, dev, payload, uint8(fport), 0, nil)
 		if err != nil {
 			log.Errorf("couldn't generate uplink: %s\n", err)
 			return
 		}
-		log.Infof("Upload message: %v\n", string(msg[12:]))
+		log.Debugf("Upload message: %v\n", string(msg[12:]))
 
 		UDP.Send(msg)
 		time.Sleep(time.Duration(conf.DefaultData.Interval) * time.Millisecond)
@@ -451,12 +509,16 @@ func RunUDP() {
 	lds.InitGWMP()
 
 	if conf.UDP.Server != "" {
-		UDP.init(conf.UDP.Server)
+		err := UDP.init(conf.UDP.Server)
+		if err != nil {
+			log.Errorf("UDP server init error: %s", err)
+			return
+		}
 	} else {
 		log.Error("udp server is empty")
-		os.Exit(-1)
+		return
 	}
-	log.Info("Connection established.")
+	log.Debug("Connection established.")
 
 	loop := []func(){
 		readUDPLoop,
@@ -464,6 +526,7 @@ func RunUDP() {
 		sendGWKeepalivedLoop,
 		sendGWStatelLoop,
 		checkTimeoutPackageLoop,
+		statLoop,
 	}
 	for _, fun := range loop {
 		go func(f func()) {
@@ -474,7 +537,7 @@ func RunUDP() {
 	}
 
 	// start device
-	for _, dev := range devs {
+	for _, dev := range UDP.devs {
 		go func(dev *lds.Device) {
 			UDP.wg.Add(1)
 			defer UDP.wg.Done()
@@ -485,7 +548,18 @@ func RunUDP() {
 	sigChan := make(chan os.Signal)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	log.WithField("signal", <-sigChan).Info("signal received, prepare quit")
-	stop = true
-	close(UDP.sendChan)
-	UDP.wg.Wait()
+
+	exitChan := make(chan struct{})
+	go func() {
+		log.Warning("Close UDP and stopping all devices, please wait a minute...")
+		quit = true
+		close(UDP.sendChan)
+		UDP.wg.Wait()
+		exitChan <- struct{}{}
+	}()
+	select {
+	case <-exitChan: // wait
+	case s := <-sigChan:
+		log.WithField("signal", s).Warning("signal received again, stopping immediately")
+	}
 }
