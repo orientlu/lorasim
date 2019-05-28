@@ -68,11 +68,12 @@ type rxInfo struct {
 
 //defaultData holds optional default encoded data.
 type defaultData struct {
-	Names    []string    `mapstructure:"names"`
-	Data     [][]float64 `mapstructure:"data"`
-	Interval int32       `mapstructure:"interval"`
-	Random   bool        `mapstructure:"random"`
-	Timeout  uint32      `mapstructure:"timeout"`
+	Names        []string    `mapstructure:"names"`
+	Data         [][]float64 `mapstructure:"data"`
+	Interval     int32       `mapstructure:"interval"`
+	Random       bool        `mapstructure:"random"`
+	Timeout      uint32      `mapstructure:"timeout"`
+	StatInterval uint32      `mapstructure:"stat_interval"`
 }
 
 //rawPayload holds optional raw bytes payload (hex encoded).

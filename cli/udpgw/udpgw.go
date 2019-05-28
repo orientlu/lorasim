@@ -36,28 +36,48 @@ type udp struct {
 }
 
 type stat struct {
+	// uplink + ack
 	totalSend uint64
 	totalRev  uint64
 
-	slotSend  uint32
-	slotRev   uint32
-	slot100Ms uint32
-	slot200Ms uint32
-	slot300Ms uint32
-	slot500Ms uint32
-	slot800Ms uint32
-	slot1S    uint32
-	slot2S    uint32
-	slot5S    uint32
-	slot10S   uint32
+	// uplink + as pub to mqtt
+	totalUplink uint64
+	totalAsPub  uint64
+
+	//slot
+	slotSend   uint64
+	slotRev    uint64
+	slotUplink uint64
+	slotAsPub  uint64
+
+	slot50Ms    uint64
+	slot100Ms   uint64
+	slot200Ms   uint64
+	slot300Ms   uint64
+	slot500Ms   uint64
+	slot800Ms   uint64
+	slot1S      uint64
+	slot2S      uint64
+	slot5S      uint64
+	slot10S     uint64
+	slotXXs     uint64
+	slotTimeout uint64
 }
 
 // STAT ....
 var STAT stat
 
 const (
-	// SlotInterval stat interval
-	SlotInterval = 1000 // Ms
+	Slot50ms  = 50
+	Slot100ms = Slot50ms * 2
+	Slot200ms = Slot100ms * 2
+	Slot300ms = Slot100ms * 3
+	Slot500ms = Slot100ms * 5
+	Slot800ms = Slot100ms * 8
+	Slot1s    = Slot500ms * 2
+	Slot2s    = Slot1s * 2
+	Slot5s    = Slot1s * 5
+	Slot10s   = Slot5s * 2
 )
 
 // UDP gw udp
@@ -68,6 +88,9 @@ var FunMqttHandle MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Messag
 	var js map[string]interface{}
 
 	if err := json.Unmarshal(msg.Payload(), &js); err == nil {
+
+		STAT.slotAsPub++
+
 		ackFcnt := (uint32)(js["fCnt"].(float64))
 		strEui := js["devEUI"].(string)
 		log.WithFields(log.Fields{
@@ -83,14 +106,40 @@ var FunMqttHandle MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Messag
 		defer UDP.SendTimeMutex.Unlock()
 
 		if sendTime, ok := UDP.SendTime[devEui][ackFcnt]; ok {
-			delay := time.Now().Sub(sendTime) / time.Millisecond
-			log.Infof("msg_elapsed[eui:%s]: %d ms\n", strEui, delay)
+			fdelay := time.Now().Sub(sendTime) / time.Millisecond
+			log.Infof("msg_elapsed[eui:%s]: %d ms\n", strEui, fdelay)
 			//log.Infof("msg fcnt[%d] elapsed: %s\n", ackFcnt, time.Since(sendTime))
 			delete(UDP.SendTime[devEui], ackFcnt)
+			delay := uint64(fdelay)
+			switch {
+			case delay < Slot50ms:
+				STAT.slot50Ms++
+			case delay < Slot100ms:
+				STAT.slot100Ms++
+			case delay < Slot200ms:
+				STAT.slot200Ms++
+			case delay < Slot300ms:
+				STAT.slot300Ms++
+			case delay < Slot500ms:
+				STAT.slot500Ms++
+			case delay < Slot800ms:
+				STAT.slot800Ms++
+			case delay < Slot1s:
+				STAT.slot1S++
+			case delay < Slot2s:
+				STAT.slot2S++
+			case delay < Slot5s:
+				STAT.slot5S++
+			case delay < Slot10s:
+				STAT.slot10S++
+			default:
+				STAT.slotXXs++
+			}
 
 		} else {
 			log.Infof("app mqtt msg fnct[%d] can not found", ackFcnt)
 		}
+
 	} else {
 		log.Errorf("app mqtt msg json unmarshal error %s", err)
 	}
@@ -108,6 +157,8 @@ func sendUDPLoop() {
 			log.Error("udp send failed: ", err)
 			continue
 		}
+		STAT.slotSend++
+
 		log.Trace("udp send package: ", msg)
 	}
 	// close udp when quit
@@ -133,6 +184,7 @@ func readUDPLoop() {
 			log.Error("failed to read UDP msg because of ", err)
 			continue
 		}
+		STAT.slotRev++
 
 		if rlen > 0 {
 			plen := rlen
@@ -279,6 +331,8 @@ func checkTimeoutPackageLoop() {
 					if uint32(time.Now().Sub(v)/time.Millisecond) >= conf.DefaultData.Timeout {
 						log.Warningf("msg_timeout[%s] fcnt[%d]", dk, k)
 						delete(UDP.SendTime[dk], k)
+
+						STAT.slotTimeout++
 					}
 				}
 			}
@@ -288,11 +342,69 @@ func checkTimeoutPackageLoop() {
 
 func statLoop() {
 	for quit == false {
-		time.Sleep(time.Duration(SlotInterval) * time.Millisecond)
+		time.Sleep(time.Duration(conf.DefaultData.StatInterval) * time.Millisecond)
+
+		STAT.totalRev += STAT.slotRev
+		STAT.totalAsPub += STAT.slotAsPub
+		STAT.totalSend += STAT.slotSend
+		STAT.totalUplink += STAT.slotUplink
 
 		log.WithFields(log.Fields{
-			"TotalSend": 1,
-		}).Info("stat:")
+			"Send":        STAT.slotSend,
+			"Rev":         STAT.slotRev,
+			"Uplink":      STAT.slotUplink,
+			"AsPub":       STAT.slotAsPub,
+			"TotalUplink": STAT.totalUplink,
+			"TotalAsPub":  STAT.totalAsPub,
+			"TotalSend":   STAT.totalSend,
+			"TotalRev":    STAT.totalRev,
+		}).Warning("stat(package):")
+
+		f50ms := (float64)(STAT.slot50Ms) * 100.0 / (float64)(STAT.slotAsPub)
+		f100ms := (float64)(STAT.slot100Ms) * 100.0 / (float64)(STAT.slotAsPub)
+		f200ms := (float64)(STAT.slot200Ms) * 100.0 / (float64)(STAT.slotAsPub)
+		f300ms := (float64)(STAT.slot300Ms) * 100.0 / (float64)(STAT.slotAsPub)
+		f500ms := (float64)(STAT.slot500Ms) * 100.0 / (float64)(STAT.slotAsPub)
+		f800ms := (float64)(STAT.slot800Ms) * 100.0 / (float64)(STAT.slotAsPub)
+		f1s := (float64)(STAT.slot1S) * 100.0 / (float64)(STAT.slotAsPub)
+		f2s := (float64)(STAT.slot2S) * 100.0 / (float64)(STAT.slotAsPub)
+		f5s := (float64)(STAT.slot5S) * 100.0 / (float64)(STAT.slotAsPub)
+		f10s := (float64)(STAT.slot10S) * 100.0 / (float64)(STAT.slotAsPub)
+		fxxs := (float64)(STAT.slotXXs) * 100.0 / (float64)(STAT.slotAsPub)
+
+		log.WithFields(log.Fields{
+			"50ms":    f50ms,
+			"100ms":   f100ms,
+			"200ms":   f200ms,
+			"300ms":   f300ms,
+			"500ms":   f500ms,
+			"800ms":   f800ms,
+			"1s":      f1s,
+			"2s":      f2s,
+			"5s":      f5s,
+			"10s":     f10s,
+			"more":    fxxs,
+			"timeout": STAT.slotTimeout,
+		}).Warning("stat(elapsed distribution %):")
+
+		STAT.slot50Ms = 0
+		STAT.slot100Ms = 0
+		STAT.slot200Ms = 0
+		STAT.slot300Ms = 0
+		STAT.slot500Ms = 0
+		STAT.slot800Ms = 0
+		STAT.slot1S = 0
+		STAT.slot2S = 0
+		STAT.slot5S = 0
+		STAT.slot10S = 0
+		STAT.slotXXs = 0
+		STAT.slotTimeout = 0
+
+		STAT.slotRev = 0
+		STAT.slotAsPub = 0
+		STAT.slotSend = 0
+		STAT.slotUplink = 0
+
 	}
 }
 
@@ -451,6 +563,8 @@ func genPacketBytes(config *config.TomlConfig, d *lds.Device, payload []byte, fp
 	UDP.SendTime[d.DevEUI][d.UlFcnt] = time.Now()
 	UDP.SendTimeMutex.Unlock()
 	d.UlFcnt++
+
+	STAT.slotUplink++
 
 	return msg, err
 }

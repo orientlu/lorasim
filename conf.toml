@@ -46,8 +46,9 @@ use_raw=true
 fport=5
 
 [default_data]
-interval=5000
+interval=1000
 timeout=10000
+stat_interval=10000
 
 [[devices]]
 eui="0000000000000001"
