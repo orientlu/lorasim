@@ -27,12 +27,14 @@ var conf = &config.C
 var quit = false
 
 type udp struct {
-	Conn          *net.UDPConn
-	sendChan      chan *[]byte
-	SendTime      map[lorawan.EUI64]map[uint32]time.Time
-	SendTimeMutex *sync.Mutex
-	wg            sync.WaitGroup
-	devs          map[lorawan.DevAddr]*lds.Device
+	Conn              *net.UDPConn
+	sendChan          chan *[]byte
+	SendTime          map[lorawan.EUI64]map[uint32]time.Time
+	SendTimeMutex     *sync.Mutex
+	wg                sync.WaitGroup
+	devs              map[lorawan.DevAddr]*lds.Device
+	spreadFactor      map[lorawan.DevAddr]int
+	spreadFactorMutex *sync.RWMutex
 }
 
 type stat struct {
@@ -280,7 +282,9 @@ func readUDPLoop() {
 				// trcik, do fake adr
 				macpayload, _ := macPL.FHDR.FOpts[0].(*lorawan.MACCommand)
 				adrpayload, _ := macpayload.Payload.(*lorawan.LinkADRReqPayload)
-				conf.DR.SpreadFactor = 12 - int(adrpayload.DataRate)
+				UDP.spreadFactorMutex.Lock()
+				UDP.spreadFactor[macPL.FHDR.DevAddr] = 12 - int(adrpayload.DataRate)
+				UDP.spreadFactorMutex.Unlock()
 
 				rephy, _ := macAns.MarshalBinary()
 				foptreply = append(foptreply, rephy...)
@@ -462,6 +466,8 @@ func (u *udp) init(server string) (err error) {
 	// make(map[uint32]time.time) when add Device
 	u.SendTime = make(map[lorawan.EUI64]map[uint32]time.Time)
 	u.devs = make(map[lorawan.DevAddr]*lds.Device)
+	u.spreadFactor = make(map[lorawan.DevAddr]int)
+	u.spreadFactorMutex = &sync.RWMutex{}
 
 	for _, dev := range conf.Devices {
 		log.WithField("EUI", dev.EUI).Debug("Init device")
@@ -493,6 +499,7 @@ func (u *udp) init(server string) (err error) {
 		}
 		device.SetMarshaler(conf.DeviceComm.Marshaler)
 		u.devs[devAddr] = device
+		u.spreadFactor[devAddr] = conf.DR.SpreadFactor
 	}
 
 	addr, err := net.ResolveUDPAddr("udp", server)
@@ -511,12 +518,14 @@ func (u *udp) init(server string) (err error) {
 }
 
 func genPacketBytes(config *config.TomlConfig, d *lds.Device, payload []byte, fport uint8, fOptlen uint8, fOpts []byte) ([]byte, error) {
+	UDP.spreadFactorMutex.RLock()
 	dataRate := &lds.DataRate{
 		Bandwidth:    config.DR.Bandwith,
 		Modulation:   "LORA",
-		SpreadFactor: config.DR.SpreadFactor,
+		SpreadFactor: UDP.spreadFactor[d.DevAddr],
 		BitRate:      config.DR.BitRate,
 	}
+	UDP.spreadFactorMutex.RUnlock()
 
 	dataRateStr := fmt.Sprintf("SF%dBW%d", dataRate.SpreadFactor, dataRate.Bandwidth)
 
