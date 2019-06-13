@@ -241,7 +241,14 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8,
 			return nil, err
 		}
 
-		log.Debugf("Got MIC: %s\n", phy.MIC)
+		log.WithFields(log.Fields{
+			"mac_version": lorawan.LoRaWAN1_1,
+			"conf_fcnt":   0,
+			"txDR":        uint8(txDR),
+			"txCh":        uint8(txCh),
+			"FNwkSIntKey": d.FNwkSIntKey,
+			"SNwkSIntKey": d.SNwkSIntKey,
+		}).Debugf("Got MIC: %s\n", phy.MIC)
 
 	} else {
 		return nil, errors.New("unknown lorawan version")
@@ -257,7 +264,6 @@ func (d *Device) UplinkMessageGWMP(mType lorawan.MType, fPort uint8,
 			return nil, err
 		}
 	}
-
 	log.Debugf("Upload phy payload hex: % x\n", phyBytes)
 
 	rxInfo.PhyPayload = phyBytes

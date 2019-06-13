@@ -107,41 +107,43 @@ var FunMqttHandle MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Messag
 		UDP.SendTimeMutex.Lock()
 		defer UDP.SendTimeMutex.Unlock()
 
-		if sendTime, ok := UDP.SendTime[devEui][ackFcnt]; ok {
-			fdelay := time.Now().Sub(sendTime) / time.Millisecond
-			log.Infof("msg_elapsed[eui:%s]: %d ms\n", strEui, fdelay)
-			//log.Infof("msg fcnt[%d] elapsed: %s\n", ackFcnt, time.Since(sendTime))
-			delete(UDP.SendTime[devEui], ackFcnt)
-			delay := uint64(fdelay)
-			switch {
-			case delay < Slot50ms:
-				STAT.slot50Ms++
-			case delay < Slot100ms:
-				STAT.slot100Ms++
-			case delay < Slot200ms:
-				STAT.slot200Ms++
-			case delay < Slot300ms:
-				STAT.slot300Ms++
-			case delay < Slot500ms:
-				STAT.slot500Ms++
-			case delay < Slot800ms:
-				STAT.slot800Ms++
-			case delay < Slot1s:
-				STAT.slot1S++
-			case delay < Slot2s:
-				STAT.slot2S++
-			case delay < Slot5s:
-				STAT.slot5S++
-			case delay < Slot10s:
-				STAT.slot10S++
-			default:
-				STAT.slotXXs++
+		if deviceSendTime, ok := UDP.SendTime[devEui]; ok {
+			if sendTime, ok := deviceSendTime[ackFcnt]; ok {
+				fdelay := time.Now().Sub(sendTime) / time.Millisecond
+				log.Infof("msg_elapsed[eui:%s]: %d ms\n", strEui, fdelay)
+				//log.Infof("msg fcnt[%d] elapsed: %s\n", ackFcnt, time.Since(sendTime))
+				delete(UDP.SendTime[devEui], ackFcnt)
+				delay := uint64(fdelay)
+				switch {
+				case delay < Slot50ms:
+					STAT.slot50Ms++
+				case delay < Slot100ms:
+					STAT.slot100Ms++
+				case delay < Slot200ms:
+					STAT.slot200Ms++
+				case delay < Slot300ms:
+					STAT.slot300Ms++
+				case delay < Slot500ms:
+					STAT.slot500Ms++
+				case delay < Slot800ms:
+					STAT.slot800Ms++
+				case delay < Slot1s:
+					STAT.slot1S++
+				case delay < Slot2s:
+					STAT.slot2S++
+				case delay < Slot5s:
+					STAT.slot5S++
+				case delay < Slot10s:
+					STAT.slot10S++
+				default:
+					STAT.slotXXs++
+				}
+			} else {
+				log.Infof("app mqtt msg SendTime[%s]fnct[%d] can not found", devEui, ackFcnt)
 			}
-
 		} else {
-			log.Infof("app mqtt msg fnct[%d] can not found", ackFcnt)
+			log.Infof("app mqtt msg SendTime[%s] can not found", devEui)
 		}
-
 	} else {
 		log.Errorf("app mqtt msg json unmarshal error %s", err)
 	}
@@ -224,78 +226,89 @@ func readUDPLoop() {
 				phy.DecryptFRMPayload(appSKey)
 			}
 
-			// print phy json
-			phystr, _ := json.Marshal(phy)
-			log.Debugf("downlink phypayload: %s\n", phystr)
+			if device, ok := UDP.devs[macPL.FHDR.DevAddr]; ok {
+				// print phy json
+				phystr, _ := json.Marshal(phy)
+				log.Debugf("downlink phypayload: %s\n", phystr)
 
-			b, _ := b64.StdEncoding.DecodeString(payloadb64)
-			js["txpk"].(map[string]interface{})["data"] = fmt.Sprintf("% x", b)
+				b, _ := b64.StdEncoding.DecodeString(payloadb64)
+				js["txpk"].(map[string]interface{})["data"] = fmt.Sprintf("% x", b)
 
-			newpayload, _ := json.Marshal(js)
-			log.Debugf("downlink macpayload: %s\n", newpayload)
+				newpayload, _ := json.Marshal(js)
+				log.Debugf("downlink macpayload: %s\n", newpayload)
 
-			//answer reply
-			reply := make([]byte, 4)
-			copy(reply, data[0:4])
-			reply = append(reply, gweuibytes...)
-			reply[3] = '\x05'
-			UDP.Send(reply)
-			log.Debugf("Send downlink reply: % x\n", reply)
+				//answer reply
+				reply := make([]byte, 4)
+				copy(reply, data[0:4])
+				reply = append(reply, gweuibytes...)
+				reply[3] = '\x05'
+				UDP.Send(reply)
+				log.Debugf("Send downlink reply: % x\n", reply)
 
-			// replay linkadr request
-			if macPL.FPort != nil && *macPL.FPort == 0 {
-				if strings.Contains(string(phystr), "LinkADRReq") {
-					rephy := []byte{'\x03', '\x07', '\x03', '\x07', '\x03', '\x07',
-						'\x03', '\x07', '\x03', '\x07', '\x03', '\x07', '\x06', '\xff', '\x06'}
-					msg, _ := genPacketBytes(conf, UDP.devs[macPL.FHDR.DevAddr], rephy, 0, 0, rephy)
-					msg[3] = '\x00'
-					log.Debugf("LinkAdrAns: %s", msg[12:])
-					UDP.Send(msg)
-				} else if strings.Contains(string(phystr), "DevStatusReq") {
-					rephy := []byte{'\x06', '\xff', '\x0e'}
-					msg, _ := genPacketBytes(conf, UDP.devs[macPL.FHDR.DevAddr], rephy, 0, 0, nil)
-					msg[3] = '\x00'
-					log.Debugf("DevStatusAns: %s", msg[12:])
-					UDP.Send(msg)
-				}
+				// replay linkadr request
+				if macPL.FPort != nil && *macPL.FPort == 0 {
+					if strings.Contains(string(phystr), "LinkADRReq") {
+						rephy := []byte{'\x03', '\x07', '\x03', '\x07', '\x03', '\x07',
+							'\x03', '\x07', '\x03', '\x07', '\x03', '\x07', '\x06', '\xff', '\x06'}
+						msg, _ := genPacketBytes(conf, device, rephy, 0, 0, nil)
+						msg[3] = '\x00'
+						log.Debugf("--LinkAdrAns: %s", msg[12:])
+						UDP.Send(msg)
+					} else if strings.Contains(string(phystr), "DevStatusReq") {
+						rephy := []byte{'\x06', '\xff', '\x0e'}
+						msg, _ := genPacketBytes(conf, device, rephy, 0, 0, nil)
+						msg[3] = '\x00'
+						log.Debugf("DevStatusAns: %s", msg[12:])
+						UDP.Send(msg)
+					}
 
-			}
+				} else {
+					var foptreply []byte
+					if strings.Contains(string(phystr), "RXParamSetupReq") {
+						macAns := lorawan.MACCommand{
+							CID: lorawan.RXParamSetupAns,
+							Payload: &lorawan.RXParamSetupAnsPayload{
+								ChannelACK:     true,
+								RX2DataRateACK: true,
+								RX1DROffsetACK: true,
+							}}
+						rephy, _ := macAns.MarshalBinary()
+						foptreply = append(foptreply, rephy...)
+					}
+					if strings.Contains(string(phystr), "RXTimingSetupReq") {
+						foptreply = append(foptreply, byte(lorawan.RXTimingSetupAns))
+					}
 
-			var foptreply []byte
-			if strings.Contains(string(phystr), "RXParamSetupReq") {
-				macAns := lorawan.MACCommand{
-					CID:     lorawan.RXParamSetupAns,
-					Payload: &lorawan.RXParamSetupAnsPayload{true, true, true},
-				}
-				rephy, _ := macAns.MarshalBinary()
-				foptreply = append(foptreply, rephy...)
-			}
-			if strings.Contains(string(phystr), "RXTimingSetupReq") {
-				foptreply = append(foptreply, byte(lorawan.RXTimingSetupAns))
-			}
+					if strings.Contains(string(phystr), "LinkADRReq") {
+						macAns := lorawan.MACCommand{
+							CID: lorawan.LinkADRAns,
+							Payload: &lorawan.LinkADRAnsPayload{
+								ChannelMaskACK: true,
+								DataRateACK:    true,
+								PowerACK:       true,
+							}}
+						// trcik, do fake adr
+						macpayload, _ := macPL.FHDR.FOpts[0].(*lorawan.MACCommand)
+						adrpayload, _ := macpayload.Payload.(*lorawan.LinkADRReqPayload)
+						UDP.spreadFactorMutex.Lock()
+						UDP.spreadFactor[macPL.FHDR.DevAddr] = 12 - int(adrpayload.DataRate)
+						UDP.spreadFactorMutex.Unlock()
 
-			if strings.Contains(string(phystr), "LinkADRReq") {
-				macAns := lorawan.MACCommand{
-					CID:     lorawan.LinkADRAns,
-					Payload: &lorawan.LinkADRAnsPayload{true, true, true},
-				}
-				// trcik, do fake adr
-				macpayload, _ := macPL.FHDR.FOpts[0].(*lorawan.MACCommand)
-				adrpayload, _ := macpayload.Payload.(*lorawan.LinkADRReqPayload)
-				UDP.spreadFactorMutex.Lock()
-				UDP.spreadFactor[macPL.FHDR.DevAddr] = 12 - int(adrpayload.DataRate)
-				UDP.spreadFactorMutex.Unlock()
+						rephy, _ := macAns.MarshalBinary()
+						foptreply = append(foptreply, rephy...)
+						log.Debugf("++LinkAdrAns: %s, len: %d", rephy, len(rephy))
+					}
 
-				rephy, _ := macAns.MarshalBinary()
-				foptreply = append(foptreply, rephy...)
-			}
-
-			if len(foptreply) > 0 {
-				log.Debugf("fopt uplink: % x\n", foptreply)
-				msg, _ := genPacketBytes(conf, UDP.devs[macPL.FHDR.DevAddr], []byte("\x00"), 8, 15, foptreply)
-				msg[3] = '\x00'
-				log.Debugf("MacCommand Ans: %s\n", msg[12:])
-				UDP.Send(msg)
+					if len(foptreply) > 0 {
+						log.Debugf("fopt uplink: % x\n", foptreply)
+						msg, _ := genPacketBytes(conf, device, []byte("\x00"), 8, uint8(len(foptreply)), foptreply)
+						msg[3] = '\x00'
+						log.Debugf("MacCommand Ans: %s\n", msg[12:])
+						UDP.Send(msg)
+					}
+				} // mac command
+			} else {
+				log.Errorf("Can not find dev[%s] on this gateway", macPL.FHDR.DevAddr)
 			}
 		}
 	}
@@ -519,65 +532,70 @@ func (u *udp) init(server string) (err error) {
 
 func genPacketBytes(config *config.TomlConfig, d *lds.Device, payload []byte, fport uint8, fOptlen uint8, fOpts []byte) ([]byte, error) {
 	UDP.spreadFactorMutex.RLock()
-	dataRate := &lds.DataRate{
-		Bandwidth:    config.DR.Bandwith,
-		Modulation:   "LORA",
-		SpreadFactor: UDP.spreadFactor[d.DevAddr],
-		BitRate:      config.DR.BitRate,
+	defer UDP.spreadFactorMutex.RUnlock()
+
+	if spreadFactor, ok := UDP.spreadFactor[d.DevAddr]; ok {
+
+		dataRate := &lds.DataRate{
+			Bandwidth:    config.DR.Bandwith,
+			Modulation:   "LORA",
+			SpreadFactor: spreadFactor,
+			BitRate:      config.DR.BitRate,
+		}
+
+		dataRateStr := fmt.Sprintf("SF%dBW%d", dataRate.SpreadFactor, dataRate.Bandwidth)
+
+		rxInfo := &lds.GwmpRxpk{
+			Channel:   config.RXInfo.Channel,
+			CodeRate:  config.RXInfo.CodeRate,
+			CrcStatus: config.RXInfo.CrcStatus,
+			DataRate:  dataRateStr,
+			Modu:      dataRate.Modulation,
+			Frequency: float32(config.RXInfo.Frequency) / 1000000.0,
+			LoRaSNR:   float32(config.RXInfo.LoRaSNR),
+			RfChain:   config.RXInfo.RfChain,
+			Rssi:      config.RXInfo.Rssi,
+			Size:      len(payload),
+			Tmst:      uint32(time.Now().UnixNano() / 1000),
+		}
+
+		lmi := &gw.LoRaModulationInfo{
+			Bandwidth:       uint32(dataRate.Bandwidth),
+			SpreadingFactor: uint32(dataRate.SpreadFactor),
+			CodeRate:        rxInfo.CodeRate,
+		}
+
+		umi := &gw.UplinkTXInfo_LoraModulationInfo{
+			LoraModulationInfo: lmi,
+		}
+
+		utx := gw.UplinkTXInfo{
+			Frequency:      uint32(config.RXInfo.Frequency),
+			ModulationInfo: umi,
+		}
+
+		//////
+		mType := lorawan.UnconfirmedDataUp
+		if config.DeviceComm.MType > 0 {
+			mType = lorawan.ConfirmedDataUp
+		}
+
+		//Now send an uplink
+		msg, err := d.UplinkMessageGWMP(mType, fport, rxInfo, &utx, payload, config.GW.MAC, config.Band.Name, *dataRate, fOptlen, fOpts)
+
+		gwmphead := lds.GenGWMP(config.GW.MAC)
+		msg = append(gwmphead[:], msg[:]...)
+
+		UDP.SendTimeMutex.Lock()
+		defer UDP.SendTimeMutex.Unlock()
+		UDP.SendTime[d.DevEUI][d.UlFcnt] = time.Now()
+		d.UlFcnt++
+
+		STAT.slotUplink++
+
+		return msg, err
 	}
-	UDP.spreadFactorMutex.RUnlock()
-
-	dataRateStr := fmt.Sprintf("SF%dBW%d", dataRate.SpreadFactor, dataRate.Bandwidth)
-
-	rxInfo := &lds.GwmpRxpk{
-		Channel:   config.RXInfo.Channel,
-		CodeRate:  config.RXInfo.CodeRate,
-		CrcStatus: config.RXInfo.CrcStatus,
-		DataRate:  dataRateStr,
-		Modu:      dataRate.Modulation,
-		Frequency: float32(config.RXInfo.Frequency) / 1000000.0,
-		LoRaSNR:   float32(config.RXInfo.LoRaSNR),
-		RfChain:   config.RXInfo.RfChain,
-		Rssi:      config.RXInfo.Rssi,
-		Size:      len(payload),
-		Tmst:      uint32(time.Now().UnixNano() / 1000),
-	}
-
-	lmi := &gw.LoRaModulationInfo{
-		Bandwidth:       uint32(dataRate.Bandwidth),
-		SpreadingFactor: uint32(dataRate.SpreadFactor),
-		CodeRate:        rxInfo.CodeRate,
-	}
-
-	umi := &gw.UplinkTXInfo_LoraModulationInfo{
-		LoraModulationInfo: lmi,
-	}
-
-	utx := gw.UplinkTXInfo{
-		Frequency:      uint32(config.RXInfo.Frequency),
-		ModulationInfo: umi,
-	}
-
-	//////
-	mType := lorawan.UnconfirmedDataUp
-	if config.DeviceComm.MType > 0 {
-		mType = lorawan.ConfirmedDataUp
-	}
-
-	//Now send an uplink
-	msg, err := d.UplinkMessageGWMP(mType, fport, rxInfo, &utx, payload, config.GW.MAC, config.Band.Name, *dataRate, fOptlen, fOpts)
-
-	gwmphead := lds.GenGWMP(config.GW.MAC)
-	msg = append(gwmphead[:], msg[:]...)
-
-	UDP.SendTimeMutex.Lock()
-	UDP.SendTime[d.DevEUI][d.UlFcnt] = time.Now()
-	UDP.SendTimeMutex.Unlock()
-	d.UlFcnt++
-
-	STAT.slotUplink++
-
-	return msg, err
+	return nil, fmt.Errorf("can't find device[%d] in gw[%s]", d.DevAddr, conf.GW.MAC)
 }
 
 func deviceRun(dev *lds.Device) {

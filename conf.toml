@@ -8,7 +8,7 @@ user=""
 password=""
 
 [gateway]
-mac="1000000000000001"
+mac="1100000000000001"
 
 [band]
 name="CN_470_510"
