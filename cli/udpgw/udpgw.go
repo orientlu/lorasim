@@ -35,6 +35,8 @@ type udp struct {
 	devs              map[lorawan.DevAddr]*lds.Device
 	spreadFactor      map[lorawan.DevAddr]int
 	spreadFactorMutex *sync.RWMutex
+
+	mqttChan chan MQTT.Message
 }
 
 type stat struct {
@@ -87,6 +89,11 @@ var UDP udp
 
 // FunMqttHandle ...
 var FunMqttHandle MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
+	log.Infof("udp mqtt push to Channel, chan buffer %d/%d", len(UDP.mqttChan), cap(UDP.mqttChan))
+	UDP.mqttChan <- msg
+}
+
+func handleMqtt(msg MQTT.Message) {
 	var js map[string]interface{}
 
 	if err := json.Unmarshal(msg.Payload(), &js); err == nil {
@@ -152,6 +159,12 @@ var FunMqttHandle MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Messag
 func (u *udp) Send(msg []byte) {
 	UDP.sendChan <- &msg
 	log.Trace("udp package push to Channel: ", msg)
+}
+
+func handleMqttLoop() {
+	for msg := range UDP.mqttChan {
+		handleMqtt(msg)
+	}
 }
 
 func sendUDPLoop() {
@@ -430,6 +443,7 @@ func statLoop() {
 func (u *udp) init(server string) (err error) {
 
 	u.sendChan = make(chan *[]byte, 100)
+	u.mqttChan = make(chan MQTT.Message, 100)
 	u.SendTimeMutex = &sync.Mutex{}
 
 	// Build your node with known keys (ABP).
@@ -665,6 +679,7 @@ func RunUDP() {
 
 	loop := []func(){
 		readUDPLoop,
+		handleMqttLoop,
 		sendUDPLoop,
 		sendGWKeepalivedLoop,
 		sendGWStatelLoop,
@@ -697,6 +712,7 @@ func RunUDP() {
 		log.Warning("Close UDP and stopping all devices, please wait a minute...")
 		quit = true
 		close(UDP.sendChan)
+		close(UDP.mqttChan)
 		UDP.wg.Wait()
 		exitChan <- struct{}{}
 	}()
