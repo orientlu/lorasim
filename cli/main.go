@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"git.code.oa.com/orientlu/lorasim/cli/config"
+	"git.code.oa.com/orientlu/lorasim/cli/tracing"
 	"git.code.oa.com/orientlu/lorasim/cli/udpgw"
 	"git.code.oa.com/orientlu/lorasim/lds"
 
@@ -103,6 +104,7 @@ func setupPprof(isStart bool) {
 }
 
 func main() {
+	tracing.InitTracing("")
 	confFile = flag.String("conf", "conf.toml", "path to toml configuration file")
 	logLevel := flag.Uint("loglevel", 4, "log level, default is 4; debug=5, info=4..")
 	showlogpath := flag.Bool("showlogpath", false, "log call path")
@@ -126,4 +128,6 @@ func main() {
 
 	quit = true
 	config.C.MQTT.Client.Disconnect(200)
+
+	tracing.DeInitTracing()
 }

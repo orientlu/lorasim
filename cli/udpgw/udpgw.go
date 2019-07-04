@@ -17,9 +17,11 @@ import (
 	"git.code.oa.com/orientlu/lorasim/cli/config"
 	"git.code.oa.com/orientlu/lorasim/lds"
 
+	"git.code.oa.com/orientlu/lorasim/cli/tracing"
 	"github.com/brocaar/loraserver/api/gw"
 	"github.com/brocaar/lorawan"
 	MQTT "github.com/eclipse/paho.mqtt.golang"
+	opentracing "github.com/opentracing/opentracing-go"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -89,8 +91,10 @@ var UDP udp
 
 // FunMqttHandle ...
 var FunMqttHandle MQTT.MessageHandler = func(client MQTT.Client, msg MQTT.Message) {
-	log.Infof("udp mqtt push to Channel, chan buffer %d/%d", len(UDP.mqttChan), cap(UDP.mqttChan))
-	UDP.mqttChan <- msg
+	if !quit {
+		log.Debugf("udp mqtt push to Channel, chan buffer %d/%d", len(UDP.mqttChan), cap(UDP.mqttChan))
+		UDP.mqttChan <- msg
+	}
 }
 
 func handleMqtt(msg MQTT.Message) {
@@ -98,6 +102,14 @@ func handleMqtt(msg MQTT.Message) {
 
 	if err := json.Unmarshal(msg.Payload(), &js); err == nil {
 
+		// try to get tracing span from carrier
+		if strCarrier, ok := js["tracing_carrier"].(string); ok {
+			carrier, _ := hex.DecodeString(strCarrier)
+			if pctx, err := tracing.ExtractSpanContextFromBinaryCarrier(tracing.Tracer, carrier); err == nil {
+				span := opentracing.StartSpan("handleMqtt", opentracing.ChildOf(pctx))
+				defer span.Finish()
+			}
+		}
 		STAT.slotAsPub++
 
 		ackFcnt := (uint32)(js["fCnt"].(float64))
@@ -157,8 +169,10 @@ func handleMqtt(msg MQTT.Message) {
 }
 
 func (u *udp) Send(msg []byte) {
-	UDP.sendChan <- &msg
-	log.Trace("udp package push to Channel: ", msg)
+	if !quit {
+		UDP.sendChan <- &msg
+		log.Trace("udp package push to Channel: ", msg)
+	}
 }
 
 func handleMqttLoop() {
@@ -709,8 +723,9 @@ func RunUDP() {
 
 	exitChan := make(chan struct{})
 	go func() {
-		log.Warning("Close UDP and stopping all devices, please wait a minute...")
 		quit = true
+		log.Warning("Close UDP and stopping all devices, please wait a minute...")
+		time.Sleep(time.Duration(1) * time.Microsecond)
 		close(UDP.sendChan)
 		close(UDP.mqttChan)
 		UDP.wg.Wait()
